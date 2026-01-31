@@ -11,7 +11,41 @@ export default function CartPage() {
   const { t, lang } = useLanguage()
   const { theme, getImage } = useTheme()
   const navigate = useNavigate()
+  
+const handleCheckout = async () => {
+  try {
+    // Get user's Pi address (from Pi Browser context)
+    const userAddress = await PiNetwork.getWalletAddress()
+    
+    if (!userAddress) {
+      alert("Please log in with Pi Browser")
+      return
+    }
 
+    // Create payment (1 Testnet Pi)
+    const payment = await PiNetwork.createPayment({
+      amount: "1.0", // Testnet Pi (no real value)
+      memo: "Chocolate order test",
+      recipient: userAddress,
+      metadata: { 
+        purpose: "test_transaction",
+        cartItems: items.map(i => i.id).join(",")
+      }
+    })
+
+    // Submit payment
+    const result = await PiNetwork.submitPayment(payment)
+    
+    if (result.status === 'COMPLETED') {
+      alert("✅ Test transaction successful! Thank you!")
+      // Optional: Clear cart
+      // items.forEach(item => removeFromCart(item.id))
+    }
+  } catch (error) {
+    console.error("Payment failed:", error)
+    alert("❌ Transaction failed. Please try again.")
+  }
+}
   const [windowWidth, setWindowWidth] = useState(
     typeof window !== 'undefined' ? window.innerWidth : 1024
   )
@@ -669,9 +703,11 @@ export default function CartPage() {
           </div>
 
           <button
-            onClick={() => alert('Checkout not implemented yet')}
+            onClick={handleCheckout}
+            
             style={{
               width: '100%',
+              
               padding: isMobile ? '14px' : 'clamp(14px, 3.5vw, 20px)',
               background: `linear-gradient(135deg, ${c.success} 0%, #7CB342 100%)`,
               color: 'white',
