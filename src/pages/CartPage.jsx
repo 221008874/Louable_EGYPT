@@ -108,27 +108,28 @@ const handleCheckout = async () => {
 };
 
 useEffect(() => {
+  // Only run in browser
   if (typeof window !== 'undefined' && window.Pi) {
     const initializePi = async () => {
       try {
         // ✅ MUST include 'payments' scope
-        const scopes = ['payments']; // This is critical!
+        const scopes = ['payments'];
         
-        // Handle incomplete payments
+        // Handle incomplete payments (optional but recommended)
         function onIncompletePaymentFound(payment) {
-          console.log('🔄 Incomplete payment found:', payment);
-          // Optional: Cancel incomplete payments during testing
+          console.log('🔄 Incomplete payment found:', payment.identifier);
+          // During testing, cancel incomplete payments:
           if (window.Pi) {
             window.Pi.cancelPayment(payment.identifier);
           }
         }
 
-        // Authenticate with REQUIRED scopes
-        const auth = await window.Pi.authenticate(scopes, onIncompletePaymentFound);
+        // ✅ Authenticate with required scope BEFORE creating payments
+        await window.Pi.authenticate(scopes, onIncompletePaymentFound);
         console.log('✅ Pi authenticated with payments scope');
       } catch (error) {
         console.error('❌ Pi authentication failed:', error);
-        alert("Failed to connect to Pi Network. Please refresh and try again.");
+        alert('Failed to connect to Pi Network. Please refresh the page.');
       }
     };
 
