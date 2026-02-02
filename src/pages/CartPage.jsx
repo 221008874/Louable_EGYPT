@@ -64,16 +64,16 @@ export default function CartPage() {
 
     try {
       console.log('💳 Starting checkout...');
-      
-      const paymentData = {
-        amount: totalPrice,
-        memo: `Order for ${totalItems} item(s)`,
-        metadata: { 
-          orderId: `order_${Date.now()}`,
-          itemCount: totalItems,
-          timestamp: new Date().toISOString()
-        }
-      };
+      // ✅ CORRECT PAYMENT DATA
+const paymentData = {
+  amount: totalPrice,
+  memo: `Order for ${totalItems} item(s)`,
+  metadata: { // ✅ "metadata" not "meta"
+    orderId: `order_${Date.now()}`,
+    itemCount: totalItems,
+    timestamp: new Date().toISOString()
+  }
+};
 
       console.log('Payment data:', paymentData);
 

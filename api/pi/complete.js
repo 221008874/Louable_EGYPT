@@ -39,8 +39,7 @@ export default async function handler(req, res) {
     console.log('📝 Completing payment:', paymentId, 'with txid:', txid);
 
     // Call Pi API to complete the payment
-    const url = `https://api.minepi.com/v2/payments/${paymentId}/complete`;
-    
+const url = `https://api.minepi.com/v2/payments/${paymentId}/complete`;    
     const piResponse = await fetch(url, {
       method: 'POST',
       headers: {
