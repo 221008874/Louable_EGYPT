@@ -5,13 +5,22 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     
-    <!-- ✅ FIXED: Preload inside <head> -->
+    <!-- Pi SDK - NO extra spaces -->
+    <script src="https://sdk.minepi.com/pi-sdk.js"></script>
+    <script>
+      // Initialize Pi SDK
+      Pi.init({ version: "2.0", sandbox: true });
+    </script>
+    
+    <!-- Preload hero image -->
     <link rel="preload" as="image" href="/assets/mainBG.webp">
     
-    <!-- ✅ FIXED: Removed extra spaces in font URL -->
+    <!-- Fixed font URL - NO extra spaces -->
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <!-- Add this inside <head> -->
-    <meta name="pi-app-id" content="GAKH3KBHJ3O4SX4EUWLSKD266NAV4KBKFZEQ2Q6Q4Q7F4SNTRE5Y4MPK">
+    
+    <!-- ✅ REPLACE WITH YOUR REAL APP ID (UUID format) -->
+    <meta name="pi-app-id" content="ce8a9d7c-1234-5678-90ab-cdef12345678">
+    
     <title>ecommerce-frontend</title>
   </head>
   <body>

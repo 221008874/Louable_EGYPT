@@ -13,43 +13,83 @@ export default function CartPage() {
   const navigate = useNavigate()
   
 const handleCheckout = async () => {
-  if (typeof window.Pi === 'undefined') {
+  if (!window.Pi) {
     alert("Please open this app in Pi Browser");
     return;
   }
 
   try {
-    const userAddress = await window.Pi.getWalletAddress();
-    
-    // Call your Vercel function
-    const response = await fetch('/api/pi/create-payment', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        amount: "1.0",
-        recipient: userAddress,
-        memo: "Chocolate order test"
-      })
-    });
+    const paymentData = {
+      amount: 1.0,
+      memo: "Chocolate order test",
+      metadata: { purpose: "ecommerce_test" }
+    };
 
-    const data = await response.json();
-    
-    if (data.paymentId) {
-      const approval = await window.Pi.approvePayment(data.paymentId);
-      if (approval) {
-        await fetch('/api/pi/submit-payment', {
+    const callbacks = {
+      onReadyForServerApproval: async (paymentId) => {
+        console.log("🚀 Ready for server approval:", paymentId);
+        // Call your Vercel backend to approve
+        await fetch('/api/pi/approve', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ paymentId: data.paymentId })
+          body: JSON.stringify({ paymentId })
         });
-        alert("✅ Transaction completed!");
+      },
+      onReadyForServerCompletion: async (paymentId, txid) => {
+        console.log("✅ Payment completed:", paymentId, txid);
+        // Finalize order
+        await fetch('/api/pi/complete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paymentId, txid })
+        });
+        alert("✅ Order confirmed!");
+      },
+      onCancel: () => {
+        console.log("❌ Payment cancelled");
+        alert("Payment cancelled");
+      },
+      onError: (error) => {
+        console.error("💥 Payment error:", error);
+        alert("Payment failed: " + error.message);
       }
-    }
+    };
+
+    const payment = await window.Pi.createPayment(paymentData, callbacks);
+    console.log("💳 Payment created:", payment);
   } catch (error) {
-    console.error(error);
-    alert("❌ Transaction failed");
+    console.error("🔥 Checkout error:", error);
+    alert("Checkout failed");
   }
 };
+
+useEffect(() => {
+  // Only run in browser
+  if (typeof window !== 'undefined' && window.Pi) {
+    const initializePi = async () => {
+      try {
+        const scopes = ['payments', 'username'];
+        
+        // Handle incomplete payments (if any)
+        function onIncompletePaymentFound(payment) {
+          console.log('Incomplete payment:', payment);
+          // Optional: Complete or cancel it
+        }
+
+        // Authenticate user
+        const auth = await window.Pi.authenticate(scopes, onIncompletePaymentFound);
+        console.log('✅ Pi authenticated:', auth);
+      } catch (error) {
+        console.error('❌ Pi authentication failed:', error);
+      }
+    };
+
+    initializePi();
+  }
+}, []);
+
+
+
   const [windowWidth, setWindowWidth] = useState(
     typeof window !== 'undefined' ? window.innerWidth : 1024
   )
