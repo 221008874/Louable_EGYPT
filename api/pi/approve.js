@@ -20,13 +20,16 @@ export default async function handler(req, res) {
     }
 
     // 🔥 CORRECT AUTHORIZATION HEADER
-    const response = await fetch(`https://api.minepi.com/v2/payments/${paymentId}/approve`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.PI_API_KEY}`, // ✅ MUST be "Bearer KEY"
-        'Content-Type': 'application/json'
-      }
-    });
+    // TEMPORARY TEST (remove after verification)
+const API_KEY = 'lclux2tuwiv6qkxoeyhh6szzrdavuq1u94tkfq01qvgngj8bclqx8ngragv6c7pf';
+
+const response = await fetch(`https://api.minepi.com/v2/payments/${paymentId}/approve`, {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${API_KEY}`,
+    'Content-Type': 'application/json'
+  }
+});
 
     if (!response.ok) {
       const errorText = await response.text();
