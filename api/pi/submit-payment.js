@@ -1,5 +1,5 @@
-// api/pi/submit-payment.js
-import { PiNetwork } from 'pi-sdk'
+import pkg from 'pi-sdk'; // ✅ Default import
+const { PiNetwork } = pkg; // ✅ Destructure from default export
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {

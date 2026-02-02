@@ -1,4 +1,6 @@
 // This handles post-payment completion
+import pkg from 'pi-sdk'; // ✅ Default import
+const { PiNetwork } = pkg; // ✅ Destructure from default export
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });

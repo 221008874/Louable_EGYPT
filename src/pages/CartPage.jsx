@@ -70,7 +70,34 @@ const handleCheckout = async () => {
   }
 };
 
+useEffect(() => {
+  if (typeof window !== 'undefined' && window.Pi) {
+    const initializePi = async () => {
+      try {
+        // ✅ MUST include 'payments' scope
+        const scopes = ['payments']; // This is critical!
+        
+        // Handle incomplete payments
+        function onIncompletePaymentFound(payment) {
+          console.log('🔄 Incomplete payment found:', payment);
+          // Optional: Cancel incomplete payments during testing
+          if (window.Pi) {
+            window.Pi.cancelPayment(payment.identifier);
+          }
+        }
 
+        // Authenticate with REQUIRED scopes
+        const auth = await window.Pi.authenticate(scopes, onIncompletePaymentFound);
+        console.log('✅ Pi authenticated with payments scope');
+      } catch (error) {
+        console.error('❌ Pi authentication failed:', error);
+        alert("Failed to connect to Pi Network. Please refresh and try again.");
+      }
+    };
+
+    initializePi();
+  }
+}, []);
 
   const [windowWidth, setWindowWidth] = useState(
     typeof window !== 'undefined' ? window.innerWidth : 1024
