@@ -1,10 +1,10 @@
 // api/pi/approve.js
-// ✅ FIXED: Secure backend implementation with environment variables
+// 🔍 ENHANCED DEBUG VERSION with extensive logging
 
 export default async function handler(req, res) {
-  // Enable CORS for your frontend
+  // Enable CORS
   res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', '*'); // Change to your domain in production
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   
@@ -13,36 +13,88 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
-  // Set content type
   res.setHeader('Content-Type', 'application/json');
+  
+  // Log incoming request
+  console.log('═══════════════════════════════════════');
+  console.log('🔍 APPROVE ENDPOINT CALLED');
+  console.log('Method:', req.method);
+  console.log('Headers:', JSON.stringify(req.headers, null, 2));
+  console.log('Body:', JSON.stringify(req.body, null, 2));
+  console.log('═══════════════════════════════════════');
   
   // Only POST allowed
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    console.error('❌ Wrong method:', req.method);
+    return res.status(405).json({ 
+      error: 'Method not allowed',
+      receivedMethod: req.method,
+      expectedMethod: 'POST'
+    });
   }
 
   try {
-    // Get paymentId from request
-    const { paymentId } = req.body;
-    
-    if (!paymentId) {
-      return res.status(400).json({ error: 'Missing paymentId' });
+    // Parse body if it's a string
+    let body = req.body;
+    if (typeof body === 'string') {
+      console.log('⚠️ Body is string, parsing...');
+      try {
+        body = JSON.parse(body);
+      } catch (parseError) {
+        console.error('❌ JSON parse error:', parseError);
+        return res.status(400).json({ 
+          error: 'Invalid JSON in request body',
+          details: parseError.message 
+        });
+      }
     }
 
-    // ✅ CRITICAL: Get API key from environment variable (NOT hardcoded!)
+    // Get paymentId
+    const { paymentId } = body;
+    
+    console.log('📝 Extracted paymentId:', paymentId);
+    
+    if (!paymentId) {
+      console.error('❌ Missing paymentId in body:', body);
+      return res.status(400).json({ 
+        error: 'Missing paymentId',
+        receivedBody: body,
+        hint: 'Send { "paymentId": "your_payment_id" }'
+      });
+    }
+
+    // Validate paymentId format
+    if (typeof paymentId !== 'string' || paymentId.trim() === '') {
+      console.error('❌ Invalid paymentId format:', paymentId);
+      return res.status(400).json({ 
+        error: 'Invalid paymentId format',
+        receivedPaymentId: paymentId,
+        expectedType: 'non-empty string'
+      });
+    }
+
+    // Get API key from environment
     const apiKey = process.env.PI_API_KEY;
+    
+    console.log('🔑 API Key check:');
+    console.log('  - Has API Key:', !!apiKey);
+    console.log('  - Key Length:', apiKey?.length || 0);
+    console.log('  - Key Preview:', apiKey ? apiKey.substring(0, 10) + '...' : 'MISSING');
     
     if (!apiKey) {
       console.error('❌ PI_API_KEY environment variable not set!');
       return res.status(500).json({ 
         error: 'Server configuration error',
-        details: 'API key not configured' 
+        details: 'PI_API_KEY environment variable is not configured',
+        hint: 'Set PI_API_KEY in your hosting platform environment variables'
       });
     }
 
-    console.log('📝 Approving payment:', paymentId);
+    console.log('📞 Calling Pi API...');
+    console.log('  - Payment ID:', paymentId);
+    console.log('  - URL: https://api.minepi.com/v2/payments/' + paymentId + '/approve');
 
-    // Build URL correctly
+    // Build URL
     const url = `https://api.minepi.com/v2/payments/${paymentId}/approve`;
     
     // Make request to Pi API
@@ -54,31 +106,58 @@ export default async function handler(req, res) {
       }
     });
 
+    console.log('📥 Pi API Response:');
+    console.log('  - Status:', piResponse.status);
+    console.log('  - Status Text:', piResponse.statusText);
+    console.log('  - OK:', piResponse.ok);
+
     // Handle response
     if (piResponse.ok) {
       const result = await piResponse.json();
-      console.log('✅ Payment approved successfully:', paymentId);
+      console.log('✅ SUCCESS! Payment approved');
+      console.log('  - Result:', JSON.stringify(result, null, 2));
+      
       return res.status(200).json({ 
         status: 'approved',
         paymentId,
-        data: result
+        data: result,
+        timestamp: new Date().toISOString()
       });
     } else {
+      // Get error details
       const errorText = await piResponse.text();
-      console.error('❌ Pi API Error:', piResponse.status, errorText);
+      console.error('❌ Pi API Error Response:');
+      console.error('  - Status Code:', piResponse.status);
+      console.error('  - Error Text:', errorText);
+      
+      let errorDetails;
+      try {
+        errorDetails = JSON.parse(errorText);
+        console.error('  - Parsed Error:', JSON.stringify(errorDetails, null, 2));
+      } catch {
+        errorDetails = errorText;
+      }
       
       return res.status(piResponse.status).json({ 
         error: 'Payment approval failed',
-        details: errorText,
-        statusCode: piResponse.status
+        statusCode: piResponse.status,
+        details: errorDetails,
+        paymentId,
+        hint: 'Check Pi Developer Portal for payment status'
       });
     }
     
   } catch (error) {
-    console.error('💥 Server Error in approve:', error);
+    console.error('💥 EXCEPTION in approve endpoint:');
+    console.error('  - Error Name:', error.name);
+    console.error('  - Error Message:', error.message);
+    console.error('  - Stack:', error.stack);
+    
     return res.status(500).json({ 
       error: 'Internal server error',
-      message: error.message 
+      message: error.message,
+      name: error.name,
+      timestamp: new Date().toISOString()
     });
   }
 }

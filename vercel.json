@@ -12,7 +12,10 @@
       "dest": "/api/$1"
     }
   ],
-  "env": {
-    "PI_ENVIRONMENT": "sandbox"
-  }
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    }
+  ]
 }
