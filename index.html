@@ -6,16 +6,13 @@
   
   <!-- ✅ CORRECT - No extra spaces -->
   <script src="https://sdk.minepi.com/pi-sdk.js"></script>
-<script>
-  Pi.init({ 
-    version: "2.0", 
-    sandbox: true,
-    appId: "louable7550"  // ← Try this
-  });
-</script>
-  
-  <!-- ✅ REMOVE THIS LINE ENTIRELY (optional for newer apps) -->
-  <!-- <meta name="pi-app-id" content="..."> -->
+  <script>
+    Pi.init({ 
+      version: "2.0", 
+      sandbox: true
+      // ❌ REMOVE appId - it's not needed for newer apps
+    });
+  </script>
   
   <link rel="icon" type="image/svg+xml" href="/vite.svg" />
   <title>ecommerce-frontend</title>
