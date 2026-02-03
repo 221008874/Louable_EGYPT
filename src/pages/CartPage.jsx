@@ -1,10 +1,11 @@
 // src/pages/CartPage.jsx
-// ✅ FIXED: Better error handling for approval failures and alert syntax
+// ✅ FIXED: Proper async/await for fetch calls with environment variable support
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCart } from '../context/CartContext'
 import { useLanguage } from '../context/LanguageContext'
 import { useTheme } from '../context/ThemeContext'
+
 export default function CartPage() {
   const { items, totalItems, totalPrice, removeFromCart, updateQuantity } = useCart()
   const { t, lang } = useLanguage()
@@ -13,215 +14,162 @@ export default function CartPage() {
   
   const [piAuthenticated, setPiAuthenticated] = useState(false)
   const [piAuthError, setPiAuthError] = useState(null)
+  const [piLoading, setPiLoading] = useState(true)
+
+  // Get API URL from environment or use relative path
+  const apiUrl = import.meta.env.VITE_API_URL || ''
+
   // Pi authentication
   useEffect(() => {
     const authenticatePi = async () => {
-      if (typeof window === 'undefined' || !window.Pi) {
-        console.warn('⚠️ Pi SDK not available');
-        setPiAuthError('Please open this app in Pi Browser');
-        return;
-      }
       try {
-        console.log('🔐 Authenticating with Pi Network...');
-        const scopes = ['payments'];
+        // Wait for Pi SDK to be available
+        let attempts = 0
+        const maxAttempts = 50
+        
+        while (!window.Pi && attempts < maxAttempts) {
+          console.log(`⏳ Waiting for Pi SDK... (${attempts + 1}/${maxAttempts})`)
+          await new Promise(resolve => setTimeout(resolve, 100))
+          attempts++
+        }
+        
+        if (!window.Pi) {
+          console.warn('⚠️ Pi SDK not available')
+          setPiLoading(false)
+          setPiAuthError('Please open this app in Pi Browser')
+          return
+        }
+
+        console.log('🔐 Authenticating with Pi Network...')
+        const scopes = ['payments']
         
         const onIncompletePaymentFound = (payment) => {
-          console.log('🔄 Incomplete payment:', payment.identifier);
-          return payment;
-        };
-        const auth = await window.Pi.authenticate(scopes, onIncompletePaymentFound);
+          console.log('🔄 Incomplete payment:', payment.identifier)
+          return payment
+        }
+
+        const auth = await window.Pi.authenticate(scopes, onIncompletePaymentFound)
         
-        console.log('✅ Pi authenticated:', auth.user?.username);
-        setPiAuthenticated(true);
-        setPiAuthError(null);
+        console.log('✅ Pi authenticated:', auth.user?.username)
+        setPiAuthenticated(true)
+        setPiAuthError(null)
         
       } catch (error) {
-        console.error('❌ Authentication failed:', error);
-        setPiAuthError(error.message || 'Authentication failed');
-        setPiAuthenticated(false);
+        console.error('❌ Authentication failed:', error)
+        setPiAuthError(error.message || 'Authentication failed')
+        setPiAuthenticated(false)
+      } finally {
+        setPiLoading(false)
+      }
+    }
+    authenticatePi()
+  }, [])
+
+  const handleCheckout = async () => {
+  if (!window.Pi) {
+    alert("❌ Please open this app in Pi Browser");
+    return;
+  }
+  if (!piAuthenticated) {
+    alert("❌ Please wait for Pi authentication to complete");
+    return;
+  }
+  
+  try {
+    console.log('💳 Starting checkout...');
+
+    // ✅ EXACT CORRECT FORMAT
+    const paymentData = {
+      amount: Number(totalPrice), // Convert to number
+      memo: `Order for ${totalItems} item(s)`,
+      metadata: { // "metadata" not "meta"
+        purpose: "ecommerce_test"
       }
     };
-    authenticatePi();
-  }, []);
-  // ✅ FIXED: Better error handling in checkout
-  const handleCheckout = async () => {
-    if (!window.Pi) {
-      alert("❌ Please open this app in Pi Browser");
-      return;
-    }
-    if (!piAuthenticated) {
-      alert("❌ Please wait for Pi authentication to complete");
-      return;
-    }
-    try {
-      console.log('💳 Starting checkout...');
-      // ✅ CORRECT PAYMENT DATA
-      const paymentData = {
-        amount: totalPrice,
-        memo: `Order for ${totalItems} item(s)`,
-        metadata: { // ✅ "metadata" not "meta"
-          orderId: `order_${Date.now()}`,
-          itemCount: totalItems,
-          timestamp: new Date().toISOString()
+
+    console.log('Payment ', paymentData);
+
+    const callbacks = {
+      onReadyForServerApproval: async (paymentId) => {
+        console.log("🚀 Approval needed for:", paymentId);
+        
+        try {
+          const response = await fetch('/api/pi/approve', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ paymentId })
+          });
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(errorText || `HTTP ${response.status}`);
+          }
+          
+          const result = await response.json();
+          console.log("✅ Approved:", result);
+          
+        } catch (error) {
+          console.error("💥 Approval error:", error);
+          alert("❌ Approval failed: " + error.message);
+          throw error;
         }
-      };
-      console.log('Payment data:', paymentData);
-      const callbacks = {
-        onReadyForServerApproval: async (paymentId) => {
-          console.log("🚀 Approval needed for:", paymentId);
-          
-          try {
-            console.log('📤 Sending approval request...');
-            
-            const response = await fetch('/api/pi/approve', {
-              method: 'POST',
-              headers: { 
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-              },
-              body: JSON.stringify({ paymentId })
-            });
-            
-            console.log('📥 Approval response status:', response.status);
-            console.log('📥 Content-Type:', response.headers.get('content-type'));
-            
-            // ✅ FIXED: Check content type before parsing
-            const contentType = response.headers.get('content-type') || '';
-            
-            let result;
-            if (contentType.includes('application/json')) {
-              result = await response.json();
-            } else {
-              // Response is not JSON (probably HTML error page)
-              const text = await response.text();
-              console.error('❌ Non-JSON response:', text.substring(0, 200));
-              
-              throw new Error(
-                `Server returned ${response.status}: ${text.substring(0, 100)}...`
-              );
-            }
-            
-            console.log('📥 Parsed result:', result);
-            
-            if (!response.ok) {
-              console.error("❌ Approval failed:", result);
-              throw new Error(result.error || result.details || 'Approval failed');
-            }
-            
-            console.log("✅ Server approved payment:", result);
-            
-          } catch (error) {
-            console.error("💥 Approval error:", error);
-            
-            // More specific error messages
-            if (error.message.includes('JSON')) {
-              alert("❌ Server error: Invalid response format. Check server logs.");
-            } else if (error.message.includes('Failed to fetch')) {
-              alert("❌ Network error: Cannot reach server. Check your connection.");
-            } else {
-              alert("❌ Approval failed: " + error.message);
-            }
-            
-            throw error;
-          }
-        },
+      },
+      
+      onReadyForServerCompletion: async (paymentId, txid) => {
+        console.log("✅ Completing payment:", { paymentId, txid });
         
-        onReadyForServerCompletion: async (paymentId, txid) => {
-          console.log("✅ Completing payment:", { paymentId, txid });
+        try {
+          const response = await fetch('/api/pi/complete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ paymentId, txid })
+          });
           
-          try {
-            const response = await fetch('/api/pi/complete', {
-              method: 'POST',
-              headers: { 
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-              },
-              body: JSON.stringify({ 
-                paymentId, 
-                txid,
-                orderDetails: {
-                  items,
-                  totalPrice,
-                  totalItems,
-                  timestamp: new Date().toISOString()
-                }
-              })
-            });
-            
-            const contentType = response.headers.get('content-type') || '';
-            
-            let result;
-            if (contentType.includes('application/json')) {
-              result = await response.json();
-            } else {
-              const text = await response.text();
-              console.warn('⚠️ Completion returned non-JSON:', text.substring(0, 100));
-              result = { success: response.ok };
-            }
-            
-            if (!response.ok) {
-              console.error("❌ Completion failed:", result);
-              throw new Error(result.error || 'Completion failed');
-            }
-            
-            console.log("✅ Order completed:", result);
-            // ✅ FIXED: Correct alert syntax
-            alert(`✅ Payment successful!\nTransaction ID: ${txid}\n\nThank you for your order!`);
-            
-            // Optional: Redirect or clear cart
-            // navigate('/order-success');
-            
-          } catch (error) {
-            console.error("💥 Completion error:", error);
-            // ✅ FIXED: Correct alert syntax
-            alert(`⚠️ Payment completed but order save failed.\n\nTransaction ID: ${txid}\n\nPlease save this for your records.`);
-          }
-        },
-        
-        onCancel: (paymentId) => {
-          console.log("❌ Payment cancelled:", paymentId);
-          alert("Payment was cancelled");
-        },
-        
-        onError: (error, payment) => {
-          console.error("💥 Payment error:", error, payment);
-          
-          let errorMessage = error.message || 'Unknown error';
-          
-          if (errorMessage.includes('scope')) {
-            errorMessage = 'Authentication error. Please close and reopen the app.';
-          } else if (errorMessage.includes('network')) {
-            errorMessage = 'Network error. Please check your connection.';
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(errorText || `HTTP ${response.status}`);
           }
           
-          alert("❌ Payment failed: " + errorMessage);
+          console.log("✅ Order completed!");
+          alert(`✅ Payment successful!\nTransaction ID: ${txid}`);
+          
+        } catch (error) {
+          console.error("💥 Completion error:", error);
+          alert(`⚠️ Payment completed but order save failed.\nTXID: ${txid}`);
         }
-      };
-      // Create payment
-      const payment = await window.Pi.createPayment(paymentData, callbacks);
-      console.log("💳 Payment created:", payment.identifier);
+      },
       
-    } catch (error) {
-      console.error("🔥 Checkout error:", error);
+      onCancel: (paymentId) => {
+        console.log("❌ Payment cancelled:", paymentId);
+        alert("Payment was cancelled");
+      },
       
-      let errorMessage = error.message || 'Unknown error';
-      
-      if (errorMessage.includes('scope')) {
-        errorMessage = 'Please close and reopen the app in Pi Browser';
+      onError: (error) => {
+        console.error("💥 Payment error:", error);
+        alert("❌ Payment failed: " + (error.message || 'Unknown error'));
       }
-      
-      alert("❌ Checkout failed: " + errorMessage);
-    }
-  };
+    };
+
+    const payment = await window.Pi.createPayment(paymentData, callbacks);
+    console.log("💳 Payment created:", payment.identifier);
+    
+  } catch (error) {
+    console.error("🔥 Checkout error:", error);
+    alert("❌ Checkout failed: " + (error.message || 'Please try again'));
+  }
+};
+
   const [windowWidth, setWindowWidth] = useState(
     typeof window !== 'undefined' ? window.innerWidth : 1024
   )
   const isMobile = windowWidth < 768
+
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth)
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [])
+
   const colors = {
     light: {
       primary: '#3E2723',
@@ -246,10 +194,11 @@ export default function CartPage() {
       border: '#3E2723'
     }
   }
+
   const c = theme === 'light' ? colors.light : colors.dark
-  // Status indicator
+
   const AuthStatus = () => {
-    if (typeof window === 'undefined' || !window.Pi) return null;
+    if (typeof window === 'undefined' || !window.Pi) return null
     
     return (
       <div style={{
@@ -257,17 +206,18 @@ export default function CartPage() {
         top: '10px',
         right: '10px',
         padding: '8px 12px',
-        background: piAuthenticated ? '#4CAF50' : '#FF9800',
+        background: piAuthenticated ? '#4CAF50' : (piLoading ? '#FF9800' : '#FF5252'),
         color: 'white',
         borderRadius: '6px',
         fontSize: '12px',
         zIndex: 1000,
         boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
       }}>
-        {piAuthenticated ? '✅ Pi Connected' : '⏳ Connecting...'}
+        {piLoading ? '⏳ Connecting...' : (piAuthenticated ? '✅ Pi Connected' : '❌ Connection Failed')}
       </div>
-    );
-  };
+    )
+  }
+
   if (totalItems === 0) {
     return (
       <div style={{ 
@@ -319,6 +269,7 @@ export default function CartPage() {
       </div>
     )
   }
+
   return (
     <div style={{ 
       padding: isMobile ? '1.5rem 1rem 5rem' : '2rem 2rem 6rem',
@@ -336,7 +287,7 @@ export default function CartPage() {
         }}>
           {t('cart')} ({totalItems})
         </h2>
-        {/* Cart items */}
+
         <div style={{ marginBottom: '2rem' }}>
           {items.map((item) => (
             <div key={item.id} style={{ 
@@ -355,7 +306,7 @@ export default function CartPage() {
             </div>
           ))}
         </div>
-        {/* Checkout */}
+
         <div style={{
           padding: '2rem',
           background: c.card,
@@ -375,13 +326,14 @@ export default function CartPage() {
             <span>{t('total')}:</span>
             <span style={{ color: c.secondary }}>${totalPrice.toFixed(2)}</span>
           </div>
+
           <button
             onClick={handleCheckout}
-            disabled={!piAuthenticated}
+            disabled={!piAuthenticated || piLoading}
             style={{
               width: '100%',
               padding: '14px',
-              background: piAuthenticated 
+              background: (piAuthenticated && !piLoading) 
                 ? `linear-gradient(135deg, ${c.success} 0%, #7CB342 100%)`
                 : '#999',
               color: 'white',
@@ -389,11 +341,11 @@ export default function CartPage() {
               borderRadius: '10px',
               fontWeight: '700',
               fontSize: '1.1rem',
-              cursor: piAuthenticated ? 'pointer' : 'not-allowed',
-              opacity: piAuthenticated ? 1 : 0.6
+              cursor: (piAuthenticated && !piLoading) ? 'pointer' : 'not-allowed',
+              opacity: (piAuthenticated && !piLoading) ? 1 : 0.6
             }}
           >
-            ✓ {piAuthenticated ? t('checkout') : 'Connecting to Pi...'}
+            ✓ {piLoading ? 'Connecting to Pi...' : (piAuthenticated ? t('checkout') : 'Connection Failed')}
           </button>
           
           {piAuthError && (
