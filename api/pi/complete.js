@@ -1,12 +1,33 @@
+// api/pi/complete.js
+// ✅ PRODUCTION VERSION
+
+const corsHeaders = {
+  'Access-Control-Allow-Credentials': 'true',
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+};
+
 export default async function handler(req, res) {
-  // CORS headers...
+  // Handle OPTIONS preflight
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, corsHeaders);
+    return res.end();
+  }
+
+  // Set CORS for all responses
+  Object.entries(corsHeaders).forEach(([key, value]) => {
+    res.setHeader(key, value);
+  });
   
+  res.setHeader('Content-Type', 'application/json');
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    const { paymentId, txid, orderDetails } = req.body;
+    const { paymentId, txid, orderDetails } = req.body || {};
     
     if (!paymentId || !txid) {
       return res.status(400).json({ error: 'Missing paymentId or txid' });
@@ -17,16 +38,15 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'PI_API_KEY not configured' });
     }
 
-    // ✅ Fixed URL (no space)
     const url = `https://api.minepi.com/v2/payments/${paymentId}/complete`;
     
     const piResponse = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': `Key ${apiKey}`,  // ✅ Key, not Bearer
+        'Authorization': `Key ${apiKey}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ txid })  // Body required for complete
+      body: JSON.stringify({ txid })
     });
 
     if (!piResponse.ok) {
@@ -45,9 +65,13 @@ export default async function handler(req, res) {
     });
     
   } catch (error) {
-    return res.status(500).json({ 
-      error: error.message,
-      success: false 
-    });
+    console.error('💥 Error:', error);
+    return res.status(500).json({ error: error.message });
   }
 }
+
+export const config = {
+  api: {
+    bodyParser: true,
+  },
+};

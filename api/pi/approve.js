@@ -1,12 +1,46 @@
+// api/pi/approve.js
+// ✅ PRODUCTION VERSION with robust CORS handling
+
+// CORS headers configuration
+const corsHeaders = {
+  'Access-Control-Allow-Credentials': 'true',
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+};
+
 export default async function handler(req, res) {
-  // CORS headers...
+  // 🚨 CRITICAL: Handle OPTIONS immediately and return
+  if (req.method === 'OPTIONS') {
+    console.log('🔄 Handling OPTIONS preflight');
+    res.writeHead(204, corsHeaders);
+    return res.end();
+  }
+
+  // Set CORS headers for all other responses
+  Object.entries(corsHeaders).forEach(([key, value]) => {
+    res.setHeader(key, value);
+  });
   
+  res.setHeader('Content-Type', 'application/json');
+
+  console.log('═══════════════════════════════════════');
+  console.log('🔍 APPROVE ENDPOINT CALLED');
+  console.log('Method:', req.method);
+  console.log('Origin:', req.headers.origin);
+  console.log('═══════════════════════════════════════');
+
+  // Only POST allowed for actual approval
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    console.error('❌ Wrong method:', req.method);
+    return res.status(405).json({ 
+      error: 'Method not allowed',
+      receivedMethod: req.method 
+    });
   }
 
   try {
-    const { paymentId } = req.body;
+    const { paymentId } = req.body || {};
     
     if (!paymentId) {
       return res.status(400).json({ error: 'Missing paymentId' });
@@ -17,16 +51,15 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'PI_API_KEY not configured' });
     }
 
-    // ✅ Fixed URL (no space) and correct endpoint
+    // ✅ Fixed URL
     const url = `https://api.minepi.com/v2/payments/${paymentId}/approve`;
     
     const piResponse = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': `Key ${apiKey}`,  // ✅ Key, not Bearer
+        'Authorization': `Key ${apiKey}`,
         'Content-Type': 'application/json'
       }
-      // No body needed for approve
     });
 
     if (piResponse.ok) {
@@ -43,7 +76,16 @@ export default async function handler(req, res) {
         details: errorText 
       });
     }
+    
   } catch (error) {
+    console.error('💥 Error:', error);
     return res.status(500).json({ error: error.message });
   }
 }
+
+// ✅ Export config for Vercel (important!)
+export const config = {
+  api: {
+    bodyParser: true,
+  },
+};
