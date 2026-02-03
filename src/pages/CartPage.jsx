@@ -89,66 +89,131 @@ export default function CartPage() {
 
     console.log('Payment ', paymentData);
 
-    const callbacks = {
-      onReadyForServerApproval: async (paymentId) => {
-        console.log("🚀 Approval needed for:", paymentId);
-        
-        try {
-          const response = await fetch('/api/pi/approve', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ paymentId })
-          });
-          
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(errorText || `HTTP ${response.status}`);
-          }
-          
-          const result = await response.json();
-          console.log("✅ Approved:", result);
-          
-        } catch (error) {
-          console.error("💥 Approval error:", error);
-          alert("❌ Approval failed: " + error.message);
-          throw error;
+    // Get API URL from environment (works in both dev and production)
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+
+const callbacks = {
+  onReadyForServerApproval: async (paymentId) => {
+    console.log("🚀 Approval needed for:", paymentId);
+    
+    try {
+      // Use absolute URL in development, relative in production
+      const approveUrl = API_BASE_URL 
+        ? `${API_BASE_URL}/api/pi/approve`
+        : '/api/pi/approve';
+      
+      console.log('📤 Sending approval request to:', approveUrl);
+      
+      const response = await fetch(approveUrl, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ paymentId })
+      });
+      
+      console.log('📥 Approval response status:', response.status);
+      
+      let result;
+      const contentType = response.headers.get('content-type');
+      
+      if (contentType && contentType.includes('application/json')) {
+        result = await response.json();
+      } else {
+        const text = await response.text();
+        if (!text.trim()) {
+          throw new Error(`Server returned ${response.status} with no content`);
         }
-      },
-      
-      onReadyForServerCompletion: async (paymentId, txid) => {
-        console.log("✅ Completing payment:", { paymentId, txid });
-        
         try {
-          const response = await fetch('/api/pi/complete', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ paymentId, txid })
-          });
-          
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(errorText || `HTTP ${response.status}`);
-          }
-          
-          console.log("✅ Order completed!");
-          alert(`✅ Payment successful!\nTransaction ID: ${txid}`);
-          
-        } catch (error) {
-          console.error("💥 Completion error:", error);
-          alert(`⚠️ Payment completed but order save failed.\nTXID: ${txid}`);
+          result = JSON.parse(text);
+        } catch {
+          throw new Error(`Server error: ${text.substring(0, 100)}`);
         }
-      },
-      
-      onCancel: (paymentId) => {
-        console.log("❌ Payment cancelled:", paymentId);
-        alert("Payment was cancelled");
-      },
-      
-      onError: (error) => {
-        console.error("💥 Payment error:", error);
-        alert("❌ Payment failed: " + (error.message || 'Unknown error'));
       }
-    };
+      
+      if (!response.ok) {
+        throw new Error(result.error || `HTTP ${response.status}`);
+      }
+      
+      console.log("✅ Server approved payment:", result);
+      
+    } catch (error) {
+      console.error("💥 Approval error:", error);
+      alert("❌ Approval failed: " + error.message);
+      throw error; // Re-throw to cancel payment
+    }
+  },
+  
+  onReadyForServerCompletion: async (paymentId, txid) => {
+    console.log("✅ Completing payment:", { paymentId, txid });
+    
+    try {
+      // Use absolute URL in development, relative in production
+      const completeUrl = API_BASE_URL 
+        ? `${API_BASE_URL}/api/pi/complete`
+        : '/api/pi/complete';
+      
+      console.log('📤 Sending completion request to:', completeUrl);
+      
+      const response = await fetch(completeUrl, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+          paymentId, 
+          txid,
+          orderDetails: {
+            items,
+            totalPrice,
+            totalItems,
+            timestamp: new Date().toISOString()
+          }
+        })
+      });
+      
+      let result;
+      const contentType = response.headers.get('content-type');
+      
+      if (contentType && contentType.includes('application/json')) {
+        result = await response.json();
+      } else {
+        const text = await response.text();
+        console.warn('⚠️ Completion returned non-JSON:', text.substring(0, 100));
+        result = { success: response.ok };
+      }
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Completion failed');
+      }
+      
+      console.log("✅ Order completed:", result);
+      alert(`✅ Payment successful!\nTransaction ID: ${txid}\n\nThank you for your order!`);
+      
+    } catch (error) {
+      console.error("💥 Completion error:", error);
+      alert(`⚠️ Payment completed but order save failed.\n\nTransaction ID: ${txid}\n\nPlease save this for your records.`);
+    }
+  },
+  
+  onCancel: (paymentId) => {
+    console.log("❌ Payment cancelled:", paymentId);
+    alert("Payment was cancelled");
+  },
+  
+  onError: (error) => {
+    console.error("💥 Payment error:", error);
+    let errorMessage = error.message || 'Unknown error';
+    
+    if (errorMessage.includes('scope')) {
+      errorMessage = 'Authentication error. Please close and reopen the app.';
+    } else if (errorMessage.includes('network')) {
+      errorMessage = 'Network error. Please check your connection.';
+    }
+    
+    alert("❌ Payment failed: " + errorMessage);
+  }
+};
 
     const payment = await window.Pi.createPayment(paymentData, callbacks);
     console.log("💳 Payment created:", payment.identifier);
