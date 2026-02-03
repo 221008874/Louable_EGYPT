@@ -95,8 +95,8 @@ export default async function handler(req, res) {
     console.log('  - URL: https://api.minepi.com/v2/payments/' + paymentId + '/approve');
 
     // Build URL
-    const url = `https://api.minepi.com/v2/payments/${paymentId}/approve`;
-    
+// ✅ CORRECT URL - NO extra spaces  
+const url = `https://api.minepi.com/v2/payments/${paymentId}/complete`;    
     // Make request to Pi API
     const piResponse = await fetch(url, {
       method: 'POST',
