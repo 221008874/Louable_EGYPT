@@ -382,7 +382,7 @@ export default function CartPage() {
           border: `2px solid ${c.secondary}40`
         }}>
           <h3 style={{ margin: '0 0 1rem 0', color: c.textDark, fontSize: '1.1rem' }}>
-            💳 Select Payment Method
+            💳  Payment Method
           </h3>
           
           <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
@@ -428,7 +428,7 @@ export default function CartPage() {
             }}>
               <h3 style={{ margin: '0 0 0.5rem 0', color: c.textDark }}>{item.name}</h3>
               <p style={{ color: c.secondary, fontSize: '1.2rem', fontWeight: '700', margin: 0 }}>
-                ${item.price.toFixed(2)}
+                π  {item.price.toFixed(2)}
               </p>
             </div>
           ))}
