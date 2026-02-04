@@ -19,8 +19,11 @@ export default async function handler(req, res) {
     const apiKey = process.env.PI_API_KEY;
     if (!apiKey) return res.status(500).json({ error: 'PI_API_KEY not set' });
 
+    // CORRECT Pi Network API endpoints
     const isSandbox = apiKey.includes('sandbox');
-    const baseUrl = isSandbox ? 'https://api.sandbox.pi' : 'https://api.mainnet.pi';
+    const baseUrl = isSandbox 
+      ? 'https://api.sandbox.minepi.com' 
+      : 'https://api.minepi.com';
     
     const piRes = await fetch(`${baseUrl}/v2/payments/${paymentId}/approve`, {
       method: 'POST',
@@ -31,9 +34,19 @@ export default async function handler(req, res) {
     });
 
     const data = await piRes.json();
-    if (!piRes.ok) return res.status(piRes.status).json({ error: 'Pi API error', details: data });
+    
+    if (!piRes.ok) {
+      return res.status(piRes.status).json({ 
+        error: 'Pi API error', 
+        details: data 
+      });
+    }
 
-    return res.json({ status: 'approved', paymentId, data });
+    return res.json({ 
+      status: 'approved', 
+      paymentId, 
+      data 
+    });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
