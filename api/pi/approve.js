@@ -6,8 +6,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization');
 
   if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
+    return res.status(200).end();
   }
 
   if (req.method !== 'POST') {
@@ -15,7 +14,16 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { paymentId } = req.body || {};
+    let body = req.body;
+    if (typeof body === 'string') {
+      try {
+        body = JSON.parse(body);
+      } catch (e) {
+        return res.status(400).json({ error: 'Invalid JSON body' });
+      }
+    }
+
+    const { paymentId } = body || {};
     
     if (!paymentId) {
       return res.status(400).json({ error: 'Missing paymentId' });
@@ -31,6 +39,8 @@ export default async function handler(req, res) {
     
     const url = `${baseUrl}/v2/payments/${paymentId}/approve`;
     
+    console.log('Calling Pi API:', url);
+
     const piRes = await fetch(url, {
       method: 'POST',
       headers: {
@@ -40,8 +50,12 @@ export default async function handler(req, res) {
     });
 
     if (!piRes.ok) {
-      const err = await piRes.text();
-      return res.status(piRes.status).json({ error: 'Pi API error', details: err });
+      const errText = await piRes.text();
+      return res.status(piRes.status).json({ 
+        error: 'Pi API error',
+        status: piRes.status,
+        details: errText 
+      });
     }
 
     const data = await piRes.json();
@@ -53,7 +67,7 @@ export default async function handler(req, res) {
     });
 
   } catch (error) {
-    console.error('Error:', error);
+    console.error('Approve endpoint error:', error);
     return res.status(500).json({ error: error.message });
   }
 }

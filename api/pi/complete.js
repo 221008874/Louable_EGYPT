@@ -1,207 +1,113 @@
-// api/pi/complete.js
-import { db } from '../../src/services/firebase.js';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-
-// CORS headers - defined at module level for reuse
-const corsHeaders = {
-  'Access-Control-Allow-Credentials': 'true',
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET,POST,OPTIONS,PUT,DELETE',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Accept',
-  'Access-Control-Max-Age': '86400',
-};
-
 export default async function handler(req, res) {
-  // Log all requests for debugging
-  console.log(`[COMPLETE] ${req.method} request from ${req.headers.origin || 'unknown origin'}`);
-  
-  // Handle OPTIONS preflight FIRST - before any other logic
+  // CORS headers - MUST be first thing
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization');
+
+  // Handle preflight immediately
   if (req.method === 'OPTIONS') {
-    console.log('🔄 Handling OPTIONS preflight');
-    
-    // Set all CORS headers
-    Object.entries(corsHeaders).forEach(([key, value]) => {
-      res.setHeader(key, value);
-    });
-    
-    return res.status(204).end();
+    return res.status(200).end();
   }
 
-  // Set CORS headers for ALL responses (including errors)
-  try {
-    Object.entries(corsHeaders).forEach(([key, value]) => {
-      res.setHeader(key, value);
-    });
-    res.setHeader('Content-Type', 'application/json');
-  } catch (headerError) {
-    console.error('Error setting headers:', headerError);
-  }
-
-  // Only allow POST
   if (req.method !== 'POST') {
-    console.error('❌ Wrong method:', req.method);
-    return res.status(405).json({ 
-      error: 'Method not allowed',
-      receivedMethod: req.method 
-    });
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    console.log('═══════════════════════════════════════');
-    console.log('🔍 COMPLETE ENDPOINT CALLED');
-    console.log('Headers:', JSON.stringify(req.headers, null, 2));
-    console.log('Body type:', typeof req.body);
-    console.log('Raw body:', req.body);
-    console.log('═══════════════════════════════════════');
-
     // Parse body safely
     let body = req.body;
-    
-    // Handle string body (shouldn't happen with bodyParser, but just in case)
     if (typeof body === 'string') {
       try {
         body = JSON.parse(body);
-      } catch (parseError) {
-        console.error('❌ JSON Parse Error:', parseError);
-        return res.status(400).json({ 
-          error: 'Invalid JSON in request body',
-          details: parseError.message 
-        });
+      } catch (e) {
+        return res.status(400).json({ error: 'Invalid JSON body' });
       }
     }
     
-    // Ensure body is an object
-    if (!body || typeof body !== 'object') {
-      body = {};
-    }
-
-    const { paymentId, txid, orderDetails } = body;
+    const { paymentId, txid, orderDetails } = body || {};
     
-    console.log('Extracted paymentId:', paymentId);
-    console.log('Extracted txid:', txid);
+    console.log('Complete called:', { paymentId, txid });
 
-    // Validate required fields
-    if (!paymentId) {
-      console.error('❌ Missing paymentId');
+    if (!paymentId || !txid) {
       return res.status(400).json({ 
-        error: 'Missing paymentId',
-        receivedBody: body 
+        error: 'Missing required fields',
+        received: { paymentId: !!paymentId, txid: !!txid }
       });
     }
 
-    if (!txid) {
-      console.error('❌ Missing txid');
-      return res.status(400).json({ 
-        error: 'Missing txid',
-        receivedBody: body 
-      });
-    }
-
-    // Check API key
     const apiKey = process.env.PI_API_KEY;
     if (!apiKey) {
-      console.error('❌ PI_API_KEY not set');
-      return res.status(500).json({ 
-        error: 'Server configuration error: PI_API_KEY not set',
-        success: false 
-      });
+      return res.status(500).json({ error: 'PI_API_KEY not configured' });
     }
 
     // Determine environment
-    const isSandbox = process.env.PI_SANDBOX === 'true' || apiKey.includes('sandbox');
+    const isSandbox = apiKey.includes('sandbox') || process.env.PI_SANDBOX === 'true';
     const baseUrl = isSandbox ? 'https://api.sandbox.pi' : 'https://api.mainnet.pi';
     
     const url = `${baseUrl}/v2/payments/${paymentId}/complete`;
-    console.log('📞 Calling Pi API:', url);
-    console.log('Environment:', isSandbox ? 'SANDBOX' : 'MAINNET');
+    
+    console.log('Calling Pi API:', url);
 
-    // Call Pi Network API
-    let piResponse;
-    try {
-      piResponse = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Key ${apiKey}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({ txid })
-      });
-    } catch (fetchError) {
-      console.error('❌ Fetch error to Pi API:', fetchError);
-      return res.status(502).json({
-        error: 'Failed to connect to Pi Network API',
-        details: fetchError.message
+    const piRes = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Key ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ txid })
+    });
+
+    if (!piRes.ok) {
+      const errText = await piRes.text();
+      console.error('Pi API error:', piRes.status, errText);
+      return res.status(piRes.status).json({ 
+        error: 'Pi API error', 
+        status: piRes.status,
+        details: errText 
       });
     }
 
-    console.log('Pi response status:', piResponse.status);
+    const piData = await piRes.json();
+    console.log('Pi success:', piData);
 
-    // Handle Pi API errors
-    if (!piResponse.ok) {
-      const errorText = await piResponse.text();
-      console.error('❌ Pi API error:', piResponse.status, errorText);
+    // Try to save to Firebase (don't fail if this errors)
+    let firebaseId = null;
+    try {
+      const { db } = await import('../lib/firebase-admin.js');
+      const { FieldValue } = await import('firebase-admin/firestore');
       
-      return res.status(piResponse.status).json({ 
-        error: 'Pi API error',
-        status: piResponse.status,
-        details: errorText 
-      });
-    }
-
-    const piResult = await piResponse.json();
-    console.log('✅ Pi payment completed:', piResult);
-
-    // Save to Firebase
-    let docRef;
-    try {
-      const order = {
+      const docRef = await db.collection('orders').add({
         orderId: `order_${Date.now()}`,
         paymentId,
         txid,
-        piTransaction: piResult,
         items: orderDetails?.items || [],
         totalPrice: orderDetails?.totalPrice || 0,
         totalItems: orderDetails?.totalItems || 0,
         status: 'completed',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      };
-
-      docRef = await addDoc(collection(db, 'orders'), order);
-      console.log('✅ Order saved to Firebase:', docRef.id);
-    } catch (firebaseError) {
-      console.error('❌ Firebase error:', firebaseError);
-      // Don't fail the whole request if Firebase fails, just log it
-      // The payment was successful on Pi's side
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp()
+      });
+      firebaseId = docRef.id;
+      console.log('Saved to Firebase:', firebaseId);
+    } catch (fbError) {
+      console.error('Firebase error (non-critical):', fbError.message);
+      // Continue - payment was successful even if Firebase fails
     }
 
-    return res.status(200).json({ 
-      success: true, 
-      orderId: `order_${Date.now()}`,
-      firebaseId: docRef?.id || null,
+    return res.status(200).json({
+      success: true,
+      paymentId,
       txid,
-      piResult
+      firebaseId,
+      piData
     });
-    
+
   } catch (error) {
-    console.error('💥 Complete endpoint error:', error);
-    console.error('Error stack:', error.stack);
-    
-    // Ensure we always return JSON even on crash
+    console.error('Complete endpoint error:', error);
     return res.status(500).json({ 
-      error: error.message || 'Failed to complete payment',
-      success: false,
-      type: error.constructor?.name || 'UnknownError'
+      error: error.message,
+      type: error.constructor?.name
     });
   }
 }
-
-// Vercel config
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: '1mb',
-    },
-  },
-};
