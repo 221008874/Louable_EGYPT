@@ -10,7 +10,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "firebase-admin": "^13.6.0",
     "pi-sdk": "^0.0.16"
-    
   }
 }
