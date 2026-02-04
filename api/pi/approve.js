@@ -1,5 +1,3 @@
-// No import needed - use native fetch
-
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -19,7 +17,7 @@ export default async function handler(req, res) {
     const apiKey = process.env.PI_API_KEY;
     if (!apiKey) return res.status(500).json({ error: 'PI_API_KEY not set' });
 
-    const isSandbox = apiKey.includes('sandbox');
+    const isSandbox = apiKey.startsWith('sandbox_') || process.env.PI_SANDBOX === 'true';
     const baseUrl = isSandbox 
       ? 'https://api.sandbox.minepi.com' 
       : 'https://api.minepi.com';
@@ -35,17 +33,10 @@ export default async function handler(req, res) {
     const data = await piRes.json();
     
     if (!piRes.ok) {
-      return res.status(piRes.status).json({ 
-        error: 'Pi API error', 
-        details: data 
-      });
+      return res.status(piRes.status).json({ error: 'Pi API error', details: data });
     }
 
-    return res.json({ 
-      status: 'approved', 
-      paymentId, 
-      data 
-    });
+    return res.json({ status: 'approved', paymentId, data });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
