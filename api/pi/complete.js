@@ -1,5 +1,5 @@
-// CORS wrapper for browser requests
-const allowCors = fn => async (req, res) => {
+export default async function handler(req, res) {
+  // CORS headers
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
@@ -9,16 +9,14 @@ const allowCors = fn => async (req, res) => {
     res.status(200).end();
     return;
   }
-  return await fn(req, res);
-};
 
-const handler = async (req, res) => {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
     const { paymentId, txid } = req.body;
+    
     if (!paymentId || !txid) {
       return res.status(400).json({ error: 'Missing paymentId or txid' });
     }
@@ -28,13 +26,12 @@ const handler = async (req, res) => {
       return res.status(500).json({ error: 'PI_API_KEY not configured' });
     }
 
-    // ✅ FIXED: No space in URL, correct auth header
     const url = `https://api.minepi.com/v2/payments/${paymentId}/complete`;
     
     const piResponse = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': `Key ${apiKey}`, // ✅ Changed from Bearer to Key
+        'Authorization': `Key ${apiKey}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({ txid })
@@ -47,7 +44,6 @@ const handler = async (req, res) => {
 
     const piResult = await piResponse.json();
     
-    // ✅ SECURITY: Return Pi's response for verification
     return res.status(200).json({ 
       success: true, 
       orderId: `order_${Date.now()}`,
@@ -59,6 +55,4 @@ const handler = async (req, res) => {
     console.error('💥 Complete Error:', error);
     return res.status(500).json({ error: error.message });
   }
-};
-
-export default allowCors(handler);
+}

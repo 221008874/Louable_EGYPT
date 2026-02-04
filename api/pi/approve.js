@@ -1,24 +1,22 @@
-// CORS wrapper for browser requests
-const allowCors = fn => async (req, res) => {
+export default async function handler(req, res) {
+  // CORS headers
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
     res.status(200).end();
     return;
   }
-  return await fn(req, res);
-};
 
-const handler = async (req, res) => {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
     const { paymentId } = req.body;
+    
     if (!paymentId) {
       return res.status(400).json({ error: 'Missing paymentId' });
     }
@@ -28,13 +26,12 @@ const handler = async (req, res) => {
       return res.status(500).json({ error: 'PI_API_KEY not configured' });
     }
 
-    // ✅ FIXED: No space in URL, correct auth header
     const url = `https://api.minepi.com/v2/payments/${paymentId}/approve`;
     
     const piResponse = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': `Key ${apiKey}`, // ✅ Changed from Bearer to Key
+        'Authorization': `Key ${apiKey}`,
         'Content-Type': 'application/json'
       }
     });
@@ -57,6 +54,4 @@ const handler = async (req, res) => {
     console.error('💥 Approve Error:', error);
     return res.status(500).json({ error: error.message });
   }
-};
-
-export default allowCors(handler);
+}
