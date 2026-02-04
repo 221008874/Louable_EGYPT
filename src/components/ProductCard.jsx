@@ -233,7 +233,7 @@ export default function ProductCard({ product }) {
             textShadow: theme === 'dark' ? '0 2px 6px rgba(212, 160, 23, 0.4)' : 'none',
             fontFamily: 'Georgia, serif'
           }}>
-            ${product.price.toFixed(2)}
+            π  {product.price.toFixed(2)}
           </p>
         </div>
         

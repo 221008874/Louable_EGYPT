@@ -397,7 +397,7 @@ export default function ProductDetail() {
                   margin: 0,
                   textShadow: theme === 'dark' ? '0 2px 8px rgba(212, 160, 23, 0.4)' : 'none'
                 }}>
-                  ${product.price.toFixed(2)}
+                  π   {product.price.toFixed(2)}
                 </p>
               </div>
               
