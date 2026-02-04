@@ -40,45 +40,13 @@ export default function CartPage() {
 
         const scopes = ['payments']
         
-        const onIncompletePaymentFound = async (payment) => {
-          console.log('⚠️ INCOMPLETE PAYMENT FOUND:', payment);
-          setPendingPayment(payment);
-          
-          try {
-            const txid = payment.transaction?.txid || payment.txid || '';
-            
-            const response = await fetch(`${apiUrl}/api/pi/complete`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                paymentId: payment.identifier,
-                txid: txid,
-                orderDetails: { 
-                  items: items.length > 0 ? items : [{ name: 'Pending Item', price: payment.amount, quantity: 1 }], 
-                  totalPrice: payment.amount, 
-                  totalItems: 1 
-                }
-              })
-            });
-
-            if (response.ok) {
-              console.log('✅ COMPLETED PENDING PAYMENT');
-              setPendingPayment(null);
-              // Clear cart if we successfully completed a pending payment
-              if (items.length === 0) {
-                clearCart();
-              }
-            } else {
-              const errorData = await response.json().catch(() => ({}));
-              console.error('❌ Failed to complete pending payment:', errorData);
-            }
-          } catch (error) {
-            console.error('❌ Error completing pending payment:', error);
-          }
-          
-          // CRITICAL - Return the payment!
-          return payment;
-        };
+        const onIncompletePaymentFound = (payment) => {
+  console.log('⚠️ INCOMPLETE PAYMENT FOUND:', payment);
+  setPendingPayment(payment);
+  
+  // ✅ CRITICAL: Return payment IMMEDIATELY
+  return payment;
+};
 
         const auth = await window.Pi.authenticate(scopes, onIncompletePaymentFound)
         console.log('✅ Pi authenticated:', auth.user?.username)
