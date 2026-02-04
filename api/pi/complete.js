@@ -1,4 +1,18 @@
-export default async function handler(req, res) {
+// CORS wrapper for browser requests
+const allowCors = fn => async (req, res) => {
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+  return await fn(req, res);
+};
+
+const handler = async (req, res) => {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -14,7 +28,7 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'PI_API_KEY not configured' });
     }
 
-    // ✅ FIXED: No space, correct auth header
+    // ✅ FIXED: No space in URL, correct auth header
     const url = `https://api.minepi.com/v2/payments/${paymentId}/complete`;
     
     const piResponse = await fetch(url, {
@@ -23,7 +37,7 @@ export default async function handler(req, res) {
         'Authorization': `Key ${apiKey}`, // ✅ Changed from Bearer to Key
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ txid }) // Must match Pi API format
+      body: JSON.stringify({ txid })
     });
 
     if (!piResponse.ok) {
@@ -33,16 +47,18 @@ export default async function handler(req, res) {
 
     const piResult = await piResponse.json();
     
-    // ✅ SECURITY: Only mark complete after Pi API confirms success
+    // ✅ SECURITY: Return Pi's response for verification
     return res.status(200).json({ 
       success: true, 
       orderId: `order_${Date.now()}`,
       txid,
-      piData: piResult // Include Pi's response for verification
+      piData: piResult
     });
     
   } catch (error) {
-    console.error('💥 Error:', error);
+    console.error('💥 Complete Error:', error);
     return res.status(500).json({ error: error.message });
   }
-}
+};
+
+export default allowCors(handler);
