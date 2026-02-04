@@ -21,54 +21,88 @@ export default function CartPage() {
 
   // Check Pi SDK availability
   useEffect(() => {
-    const checkPi = async () => {
-      const info = {
-        userAgent: navigator.userAgent,
-        hostname: window.location.hostname,
-        protocol: window.location.protocol,
-        piExists: typeof window.Pi !== 'undefined',
-        timestamp: new Date().toISOString()
-      }
-      setDebugInfo(info)
-      console.log('🔍 Pi Debug Info:', info)
-
+  const initializePi = async () => {
+    try {
       // Wait for Pi SDK
-      let attempts = 0
-      const maxAttempts = 50
-      
-      while (!window.Pi && attempts < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 100))
-        attempts++
+      let attempts = 0;
+      while (!window.Pi && attempts < 20) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        attempts++;
       }
 
       if (!window.Pi) {
-        console.error('❌ Pi SDK not found after', maxAttempts, 'attempts')
-        setPiStatus('error')
-        setPiError('Pi SDK not available. Please open in Pi Browser.')
-        return
+        throw new Error('Pi SDK failed to load');
       }
 
-      console.log('✅ Pi SDK found, attempting authentication...')
-      setPiStatus('available')
+      const isSandbox = window.location.hostname === 'localhost';
+      
+      Pi.init({ 
+        version: "2.0",
+        sandbox: isSandbox
+      });
 
-      try {
-        const auth = await window.Pi.authenticate(['payments'], (payment) => {
-          console.log('🔄 Incomplete payment:', payment)
-          return payment
-        })
+      console.log('📦 Pi SDK initialized');
 
-        console.log('✅ Authentication successful:', auth)
-        setPiStatus('authenticated')
-        
-      } catch (error) {
-        console.error('❌ Authentication failed:', error)
-        setPiStatus('error')
-        setPiError(error.message || 'Authentication failed')
-      }
+      // ✅ CRITICAL: Handle incomplete payments
+      const onIncompletePaymentFound = async (payment) => {
+        console.log('⚠️ INCOMPLETE PAYMENT DETECTED:', payment);
+        console.log('   Payment ID:', payment.identifier);
+        console.log('   Amount:', payment.amount);
+        console.log('   Status:', payment.status);
+
+        // Try to auto-complete it
+        try {
+          console.log('🔄 Attempting to auto-complete...');
+
+          // Get the transaction ID from the payment object
+          const txid = payment.transaction?.txid || payment.txid || '';
+
+          const response = await fetch('/api/pi/complete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              paymentId: payment.identifier,
+              txid: txid,
+              orderDetails: {
+                items: [],
+                totalPrice: payment.amount,
+                totalItems: 1
+              }
+            })
+          });
+
+          const result = await response.json();
+
+          if (response.ok) {
+            console.log('✅ SUCCESSFULLY COMPLETED PENDING PAYMENT:', result);
+            alert('✅ Auto-completed pending payment!');
+          } else {
+            console.error('❌ Failed to complete:', result);
+            console.log('Response status:', response.status);
+            console.log('Response body:', result);
+          }
+        } catch (error) {
+          console.error('❌ Error auto-completing payment:', error);
+          console.error('Error details:', error.message);
+        }
+      };
+
+      console.log('🔐 Authenticating...');
+      const auth = await Pi.authenticate(['payments'], onIncompletePaymentFound);
+
+      console.log('✅ AUTHENTICATED:', auth.user.username);
+      setAuthToken(auth.accessToken);
+      setPiStatus('authenticated');
+
+    } catch (error) {
+      console.error('❌ Pi initialization error:', error);
+      setPiStatus('error');
+      alert('Authentication failed: ' + error.message);
     }
+  };
 
-    checkPi()
-  }, [])
+  initializePi();
+}, []);
 
   const handleCheckout = async () => {
     if (piStatus !== 'authenticated') {
