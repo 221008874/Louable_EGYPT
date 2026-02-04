@@ -30,6 +30,7 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Server configuration error' });
     }
 
+    // ✅ FIXED: Removed space in URL
     const url = `https://api.minepi.com/v2/payments/${paymentId}/approve`;
     
     console.log('🌐 Calling Pi API:', url);
