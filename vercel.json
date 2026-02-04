@@ -1,12 +1,5 @@
 {
-  "functions": {
-    "api/pi/approve.js": {
-      "runtime": "nodejs18.x"
-    },
-    "api/pi/complete.js": {
-      "runtime": "nodejs18.x"
-    }
-  },
+ 
   "headers": [
     {
       "source": "/api/pi/(.*)",
