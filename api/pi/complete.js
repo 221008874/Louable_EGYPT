@@ -1,5 +1,3 @@
-// No import needed - use native fetch
-
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -8,7 +6,12 @@ export default async function handler(req, res) {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method === 'GET') {
-    return res.json({ status: 'ready', piKeyConfigured: !!process.env.PI_API_KEY });
+    return res.json({ 
+      status: 'ready', 
+      piKeyConfigured: !!process.env.PI_API_KEY,
+      piKeyPrefix: process.env.PI_API_KEY ? process.env.PI_API_KEY.substring(0, 15) + '...' : 'NOT SET',
+      piSandbox: process.env.PI_SANDBOX
+    });
   }
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
@@ -21,16 +24,21 @@ export default async function handler(req, res) {
     }
 
     const apiKey = process.env.PI_API_KEY;
-    if (!apiKey) return res.status(500).json({ error: 'PI_API_KEY not set' });
+    if (!apiKey) {
+      return res.status(500).json({ error: 'PI_API_KEY not set in Vercel environment variables' });
+    }
 
-    const isSandbox = apiKey.includes('sandbox');
+    // Better sandbox detection - check key format or env var
+    const isSandbox = apiKey.startsWith('sandbox_') || process.env.PI_SANDBOX === 'true';
     const baseUrl = isSandbox 
       ? 'https://api.sandbox.minepi.com' 
       : 'https://api.minepi.com';
     
     const url = `${baseUrl}/v2/payments/${paymentId}/complete`;
     
-    console.log('Calling Pi API:', url);
+    console.log('Environment:', isSandbox ? 'SANDBOX' : 'MAINNET');
+    console.log('API Key prefix:', apiKey.substring(0, 15) + '...');
+    console.log('Calling:', url);
 
     const piRes = await fetch(url, {
       method: 'POST',
@@ -48,11 +56,10 @@ export default async function handler(req, res) {
       return res.status(piRes.status).json({ 
         error: 'Pi API error', 
         status: piRes.status,
-        details: piData 
+        details: piData,
+        hint: 'Check if PI_API_KEY is correct in Vercel dashboard'
       });
     }
-
-    console.log('Pi success:', piData.identifier);
 
     // Save to Firebase (optional)
     let firebaseId = null;
@@ -71,7 +78,6 @@ export default async function handler(req, res) {
           createdAt: FieldValue.serverTimestamp()
         });
         firebaseId = docRef.id;
-        console.log('Saved to Firebase:', firebaseId);
       }
     } catch (fbError) {
       console.log('Firebase skipped:', fbError.message);
@@ -86,10 +92,7 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error('Handler error:', error);
-    return res.status(500).json({ 
-      error: error.message,
-      type: error.code || 'UNKNOWN'
-    });
+    return res.status(500).json({ error: error.message });
   }
 }
 
