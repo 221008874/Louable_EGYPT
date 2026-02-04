@@ -9,22 +9,15 @@
       ]
     }
   ],
+ 
   "routes": [
     {
       "src": "/api/pi/approve",
-      "dest": "/api/approve.js"
+      "dest": "/api/pi/approve.js"
     },
     {
       "src": "/api/pi/complete",
-      "dest": "/api/complete.js"
-    },
-    {
-      "src": "/api/approve",
-      "dest": "/api/approve.js"
-    },
-    {
-      "src": "/api/complete",
-      "dest": "/api/complete.js"
+      "dest": "/api/pi/complete.js"
     },
     {
       "src": "/(.*)",
