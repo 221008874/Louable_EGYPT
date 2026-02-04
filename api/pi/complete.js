@@ -1,4 +1,3 @@
-// api/pi/complete.js
 import { db } from '../../src/services/firebase.js';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
@@ -51,9 +50,11 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'PI_API_KEY not configured' });
     }
 
-    // Complete payment with Pi
-    const url = `https://api.minepi.com/v2/payments/${paymentId}/complete`;
+    // ✅ FIXED: Use mainnet.pi (not minepi.com)
+    const url = `https://api.mainnet.pi/v2/payments/${paymentId}/complete`;
     
+    console.log('📤 Calling Pi API:', url); // ✅ Added logging
+
     const piResponse = await fetch(url, {
       method: 'POST',
       headers: {
@@ -65,6 +66,7 @@ export default async function handler(req, res) {
 
     if (!piResponse.ok) {
       const errorText = await piResponse.text();
+      console.error('❌ Pi API error:', errorText); // ✅ Better logging
       return res.status(piResponse.status).json({ 
         error: 'Pi API error',
         status: piResponse.status,
