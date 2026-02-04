@@ -1,7 +1,7 @@
 {
   "headers": [
     {
-      "source": "/api/(.*)",
+      "source": "/api/pi/(.*)",
       "headers": [
         { "key": "Access-Control-Allow-Origin", "value": "*" },
         { "key": "Access-Control-Allow-Methods", "value": "GET,POST,OPTIONS" },
@@ -9,7 +9,6 @@
       ]
     }
   ],
- 
   "routes": [
     {
       "src": "/api/pi/approve",
@@ -18,6 +17,9 @@
     {
       "src": "/api/pi/complete",
       "dest": "/api/pi/complete.js"
+    },
+    {
+      "handle": "filesystem"
     },
     {
       "src": "/(.*)",
