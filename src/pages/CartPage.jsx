@@ -17,7 +17,7 @@ export default function CartPage() {
   const [piLoading, setPiLoading] = useState(true)
   const [isProcessing, setIsProcessing] = useState(false)
 
-  const apiUrl = import.meta.env.VITE_API_URL || ''
+  const apiUrl = env.local.VITE_API_URL || ''
 
   // Pi authentication
   useEffect(() => {
