@@ -16,6 +16,7 @@ export default function CartPage() {
   const [piAuthError, setPiAuthError] = useState(null)
   const [piLoading, setPiLoading] = useState(true)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [pendingPayment, setPendingPayment] = useState(null)
 
   const apiUrl = import.meta.env.VITE_API_URL || ''
 
@@ -39,30 +40,45 @@ export default function CartPage() {
 
         const scopes = ['payments']
         
-const onIncompletePaymentFound = async (payment) => {
-  console.log('⚠️ INCOMPLETE PAYMENT FOUND');
-  
-  try {
-    const response = await fetch('/api/pi/complete', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        paymentId: payment.identifier,
-        txid: payment.transaction?.txid || '',
-        orderDetails: { items: [], totalPrice: payment.amount, totalItems: 1 }
-      })
-    });
+        const onIncompletePaymentFound = async (payment) => {
+          console.log('⚠️ INCOMPLETE PAYMENT FOUND:', payment);
+          setPendingPayment(payment);
+          
+          try {
+            const txid = payment.transaction?.txid || payment.txid || '';
+            
+            const response = await fetch(`${apiUrl}/api/pi/complete`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                paymentId: payment.identifier,
+                txid: txid,
+                orderDetails: { 
+                  items: items.length > 0 ? items : [{ name: 'Pending Item', price: payment.amount, quantity: 1 }], 
+                  totalPrice: payment.amount, 
+                  totalItems: 1 
+                }
+              })
+            });
 
-    if (response.ok) {
-      console.log('✅ COMPLETED PENDING PAYMENT');
-    }
-  } catch (error) {
-    console.error('❌ Error:', error);
-  }
-  
-  // ✅ CRITICAL - Return the payment!
-  return payment;
-};
+            if (response.ok) {
+              console.log('✅ COMPLETED PENDING PAYMENT');
+              setPendingPayment(null);
+              // Clear cart if we successfully completed a pending payment
+              if (items.length === 0) {
+                clearCart();
+              }
+            } else {
+              const errorData = await response.json().catch(() => ({}));
+              console.error('❌ Failed to complete pending payment:', errorData);
+            }
+          } catch (error) {
+            console.error('❌ Error completing pending payment:', error);
+          }
+          
+          // CRITICAL - Return the payment!
+          return payment;
+        };
 
         const auth = await window.Pi.authenticate(scopes, onIncompletePaymentFound)
         console.log('✅ Pi authenticated:', auth.user?.username)
@@ -78,215 +94,223 @@ const onIncompletePaymentFound = async (payment) => {
       }
     }
     authenticatePi()
-  }, [])
+  }, [apiUrl, items, clearCart])
+
+  // Handle pending payment completion manually
+  const handleCompletePending = async () => {
+    if (!pendingPayment) return;
+    
+    setIsProcessing(true);
+    try {
+      const txid = pendingPayment.transaction?.txid || pendingPayment.txid || '';
+      
+      const response = await fetch(`${apiUrl}/api/pi/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          paymentId: pendingPayment.identifier,
+          txid: txid,
+          orderDetails: { items, totalPrice, totalItems }
+        })
+      });
+
+      if (response.ok) {
+        alert('✅ Pending payment completed successfully!');
+        setPendingPayment(null);
+        clearCart();
+        navigate('/order-success');
+      } else {
+        const error = await response.json();
+        alert('❌ Failed to complete: ' + (error.error || 'Unknown error'));
+      }
+    } catch (error) {
+      alert('❌ Error: ' + error.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   const handleCheckout = async () => {
-  // ✅ FIRST: Check if user is authenticated
-  if (!window.Pi) {  // ✅ Simple check instead
-    alert('Pi not initialized');
-    return;
-  }
-
-  // ✅ SECOND: Prevent multiple simultaneous payments
-  if (isProcessing) {
-    alert('Payment already in progress. Please wait...');
-    return;
-  }
-
-  setIsProcessing(true);
-
-  try {
-    // ✅ THIRD: Check if there's a pending payment
-    console.log('🔍 Checking for pending payments...');
-    
-    if (window.Pi && typeof window.Pi.getPendingPayments === 'function') {
-      try {
-        const pendingPayments = await window.Pi.getPendingPayments();
-        console.log('Pending payments:', pendingPayments);
-        
-        if (pendingPayments && pendingPayments.length > 0) {
-          console.log('⚠️ Found pending payments, trying to complete them first...');
-          
-          for (const payment of pendingPayments) {
-            try {
-              console.log('🔄 Completing pending payment:', payment.identifier);
-              
-              const txid = payment.transaction?.txid || payment.txid || '';
-              
-              const completeResponse = await fetch('/api/pi/complete', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  paymentId: payment.identifier,
-                  txid: txid,
-                  orderDetails: { items, totalPrice, totalItems }
-                })
-              });
-
-              if (completeResponse.ok) {
-                console.log('✅ Completed pending payment');
-              } else {
-                console.error('❌ Failed to complete pending payment');
-              }
-            } catch (error) {
-              console.error('Error completing pending payment:', error);
-            }
-          }
-          
-          // Wait a moment before continuing
-          await new Promise(r => setTimeout(r, 1000));
-        }
-      } catch (error) {
-        console.error('Error checking pending payments:', error);
-      }
+    // Check if user is authenticated
+    if (!window.Pi) {
+      alert('Pi not initialized. Please open in Pi Browser.');
+      return;
     }
 
-    // ✅ FOURTH: Now create the new payment
-    console.log('💳 Creating new payment...');
-    
-    const paymentData = {
-      amount: Number(totalPrice),
-      memo: `Louable Order - ${totalItems} items`,
-      meta: { purpose: "ecommerce_test" }
-    };
+    // Prevent multiple simultaneous payments
+    if (isProcessing) {
+      alert('Payment already in progress. Please wait...');
+      return;
+    }
 
-    console.log('💳 Payment data:', paymentData);
-
-    const callbacks = {
-      onReadyForServerApproval: async (paymentId) => {
-        console.log('🚀 Approving payment:', paymentId);
-        
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 15000);
-
-          const response = await fetch('https://louablech.vercel.app/api/pi/approve', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ paymentId }),
-            signal: controller.signal
-          });
-          
-          clearTimeout(timeoutId);
-
-          let result;
-          const contentType = response.headers.get('content-type');
-          
-          if (contentType && contentType.includes('application/json')) {
-            result = await response.json();
-          } else {
-            const text = await response.text();
-            if (text.trim() === '') {
-              throw new Error(`Server returned ${response.status} with no content`);
-            }
-            try {
-              result = JSON.parse(text);
-            } catch {
-              throw new Error(`Server error: ${text.substring(0, 100)}`);
-            }
-          }
-          
-          if (!response.ok) {
-            throw new Error(result.error || `HTTP ${response.status}`);
-          }
-          
-          console.log('✅ Payment approved');
-        } catch (error) {
-          console.error('💥 Approval error:', error);
-          alert('❌ Approval failed: ' + error.message);
-          throw error;
-        }
-      },
-
-      onReadyForServerCompletion: async (paymentId, txid) => {
-        console.log('✅ Completing payment:', paymentId, txid);
-        
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 15000);
-
-          const response = await fetch('https://louablech.vercel.app/api/pi/complete', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              paymentId, 
-              txid,
-              orderDetails: { items, totalPrice, totalItems }
-            }),
-            signal: controller.signal
-          });
-
-          clearTimeout(timeoutId);
-
-          let result;
-          const contentType = response.headers.get('content-type');
-          
-          if (contentType && contentType.includes('application/json')) {
-            result = await response.json();
-          } else {
-            const text = await response.text();
-            console.warn('⚠️ Non-JSON response:', text.substring(0, 100));
-            result = { success: response.ok };
-          }
-          
-          if (!response.ok) {
-            throw new Error(result.error || 'Completion failed');
-          }
-
-          // Save to Firebase
-          await addDoc(collection(db, 'orders'), {
-            orderId: `order_${Date.now()}`,
-            paymentId,
-            txid,
-            items: items.map(item => ({
-              id: item.id,
-              name: item.name,
-              price: item.price,
-              quantity: item.quantity || 1
-            })),
-            totalPrice,
-            totalItems,
-            currency: 'PI',
-            status: 'completed',
-            createdAt: serverTimestamp()
-          });
-
-          console.log('✅ Order saved');
-          clearCart();
-          navigate('/order-success', { 
-            state: { orderId: paymentId, txid, totalPrice, items } 
-          });
-          
-        } catch (error) {
-          console.error('💥 Completion error:', error);
-          alert('⚠️ Payment completed but order save failed. TXID: ' + txid);
-          setIsProcessing(false);
-        }
-      },
-
-      onCancel: (paymentId) => {
-        console.log('❌ Payment cancelled:', paymentId);
-        setIsProcessing(false);
-        alert('Payment cancelled');
-      },
-
-      onError: (error) => {
-        console.error('💥 Payment error:', error);
-        setIsProcessing(false);
-        alert('❌ Payment failed: ' + (error.message || 'Unknown error'));
+    // Check for pending payment first
+    if (pendingPayment) {
+      const shouldComplete = confirm('You have a pending payment. Complete it first?');
+      if (shouldComplete) {
+        await handleCompletePending();
       }
-    };
+      return;
+    }
 
-    // ✅ Create the payment
-    const payment = await window.Pi.createPayment(paymentData, callbacks);
-    console.log('💳 Payment created:', payment.identifier);
+    setIsProcessing(true);
 
-  } catch (error) {
-    console.error('🔥 Checkout error:', error);
-    alert('❌ Checkout failed: ' + (error.message || 'Please try again'));
-    setIsProcessing(false);
-  }
-};
+    try {
+      console.log('💳 Creating new payment...');
+      
+      const paymentData = {
+        amount: Number(totalPrice),
+        memo: `Louable Order - ${totalItems} items`,
+        meta: { 
+          orderItems: items.map(i => i.name).join(', '),
+          timestamp: Date.now()
+        }
+      };
+
+      console.log('💳 Payment data:', paymentData);
+
+      const callbacks = {
+        onReadyForServerApproval: async (paymentId) => {
+          console.log('🚀 Approving payment:', paymentId);
+          
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+            // FIXED: Use apiUrl variable, no trailing space
+            const response = await fetch(`${apiUrl}/api/pi/approve`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ paymentId }),
+              signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+
+            let result;
+            const contentType = response.headers.get('content-type');
+            
+            if (contentType && contentType.includes('application/json')) {
+              result = await response.json();
+            } else {
+              const text = await response.text();
+              if (text.trim() === '') {
+                throw new Error(`Server returned ${response.status} with no content`);
+              }
+              try {
+                result = JSON.parse(text);
+              } catch {
+                throw new Error(`Server error: ${text.substring(0, 100)}`);
+              }
+            }
+            
+            if (!response.ok) {
+              throw new Error(result.error || `HTTP ${response.status}`);
+            }
+            
+            console.log('✅ Payment approved');
+          } catch (error) {
+            console.error('💥 Approval error:', error);
+            alert('❌ Approval failed: ' + error.message);
+            throw error;
+          }
+        },
+
+        onReadyForServerCompletion: async (paymentId, txid) => {
+          console.log('✅ Completing payment:', paymentId, txid);
+          
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+            // FIXED: Use apiUrl variable, no trailing space
+            const response = await fetch(`${apiUrl}/api/pi/complete`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                paymentId, 
+                txid,
+                orderDetails: { items, totalPrice, totalItems }
+              }),
+              signal: controller.signal
+            });
+
+            clearTimeout(timeoutId);
+
+            let result;
+            const contentType = response.headers.get('content-type');
+            
+            if (contentType && contentType.includes('application/json')) {
+              result = await response.json();
+            } else {
+              const text = await response.text();
+              console.warn('⚠️ Non-JSON response:', text.substring(0, 100));
+              result = { success: response.ok };
+            }
+            
+            if (!response.ok) {
+              throw new Error(result.error || 'Completion failed');
+            }
+
+            // Save to Firebase
+            await addDoc(collection(db, 'orders'), {
+              orderId: `order_${Date.now()}`,
+              paymentId,
+              txid,
+              items: items.map(item => ({
+                id: item.id,
+                name: item.name,
+                price: item.price,
+                quantity: item.quantity || 1
+              })),
+              totalPrice,
+              totalItems,
+              currency: 'PI',
+              status: 'completed',
+              createdAt: serverTimestamp()
+            });
+
+            console.log('✅ Order saved');
+            clearCart();
+            navigate('/order-success', { 
+              state: { orderId: paymentId, txid, totalPrice, items } 
+            });
+            
+          } catch (error) {
+            console.error('💥 Completion error:', error);
+            alert('⚠️ Payment completed but order save failed. TXID: ' + txid);
+            setIsProcessing(false);
+          }
+        },
+
+        onCancel: (paymentId) => {
+          console.log('❌ Payment cancelled:', paymentId);
+          setIsProcessing(false);
+          alert('Payment cancelled');
+        },
+
+        onError: (error) => {
+          console.error('💥 Payment error:', error);
+          setIsProcessing(false);
+          
+          // Handle specific error types
+          if (error.message?.includes('pending payment')) {
+            alert('⚠️ You have a pending payment. Please complete it first or wait for it to expire.');
+          } else {
+            alert('❌ Payment failed: ' + (error.message || 'Unknown error'));
+          }
+        }
+      };
+
+      // Create the payment
+      const payment = await window.Pi.createPayment(paymentData, callbacks);
+      console.log('💳 Payment created:', payment.identifier);
+
+    } catch (error) {
+      console.error('🔥 Checkout error:', error);
+      alert('❌ Checkout failed: ' + (error.message || 'Please try again'));
+      setIsProcessing(false);
+    }
+  };
 
   const [windowWidth, setWindowWidth] = useState(
     typeof window !== 'undefined' ? window.innerWidth : 1024
@@ -347,7 +371,7 @@ const onIncompletePaymentFound = async (payment) => {
     )
   }
 
-  if (totalItems === 0) {
+  if (totalItems === 0 && !pendingPayment) {
     return (
       <div style={{ 
         padding: isMobile ? '2rem 1rem' : '3rem 2rem',
@@ -391,138 +415,184 @@ const onIncompletePaymentFound = async (payment) => {
           {t('cart')} ({totalItems})
         </h2>
 
-        {/* Cart Items */}
-        <div style={{ marginBottom: '2rem' }}>
-          {items.map((item) => (
-            <div key={item.id} style={{ 
-              padding: '1.5rem',
-              backgroundColor: c.card,
-              borderRadius: '12px',
-              marginBottom: '1rem',
-              border: `1px solid ${c.border}`,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              gap: '1rem'
-            }}>
-              <div style={{ flex: 1 }}>
-                <h3 style={{ margin: '0 0 0.5rem 0', color: c.textDark }}>{item.name}</h3>
-                <p style={{ color: c.secondary, fontSize: '1.2rem', fontWeight: '700', margin: 0 }}>
-                  π {item.price.toFixed(2)}
-                </p>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <button
-                    onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                    style={{
-                      width: '32px', height: '32px',
-                      borderRadius: '50%', border: `2px solid ${c.border}`,
-                      background: c.card, color: c.textDark,
-                      fontWeight: '700', cursor: 'pointer'
-                    }}
-                  >-</button>
-                  <span style={{ fontWeight: '700', minWidth: '24px', textAlign: 'center' }}>
-                    {item.quantity}
-                  </span>
-                  <button
-                    onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                    style={{
-                      width: '32px', height: '32px',
-                      borderRadius: '50%', border: `2px solid ${c.border}`,
-                      background: c.card, color: c.textDark,
-                      fontWeight: '700', cursor: 'pointer'
-                    }}
-                  >+</button>
-                </div>
-                <button
-                  onClick={() => removeFromCart(item.id)}
-                  style={{
-                    background: c.danger, color: 'white',
-                    border: 'none', borderRadius: '8px',
-                    padding: '8px 12px', cursor: 'pointer',
-                    fontWeight: '600'
-                  }}
-                >
-                  ✕
-                </button>
-              </div>
+        {/* Pending Payment Alert */}
+        {pendingPayment && (
+          <div style={{
+            padding: '1.5rem',
+            background: '#FFF3CD',
+            border: '2px solid #FFC107',
+            borderRadius: '12px',
+            marginBottom: '2rem',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '1rem'
+          }}>
+            <div>
+              <h3 style={{ margin: '0 0 0.5rem 0', color: '#856404' }}>⚠️ Pending Payment Found</h3>
+              <p style={{ margin: 0, color: '#856404' }}>
+                Amount: π {pendingPayment.amount} | ID: {pendingPayment.identifier?.slice(0, 8)}...
+              </p>
             </div>
-          ))}
-        </div>
+            <button
+              onClick={handleCompletePending}
+              disabled={isProcessing}
+              style={{
+                padding: '12px 24px',
+                background: isProcessing ? '#999' : '#FFC107',
+                color: '#000',
+                border: 'none',
+                borderRadius: '8px',
+                fontWeight: '700',
+                cursor: isProcessing ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {isProcessing ? 'Processing...' : 'Complete Payment'}
+            </button>
+          </div>
+        )}
+
+        {/* Cart Items */}
+        {items.length > 0 && (
+          <div style={{ marginBottom: '2rem' }}>
+            {items.map((item) => (
+              <div key={item.id} style={{ 
+                padding: '1.5rem',
+                backgroundColor: c.card,
+                borderRadius: '12px',
+                marginBottom: '1rem',
+                border: `1px solid ${c.border}`,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '1rem'
+              }}>
+                <div style={{ flex: 1 }}>
+                  <h3 style={{ margin: '0 0 0.5rem 0', color: c.textDark }}>{item.name}</h3>
+                  <p style={{ color: c.secondary, fontSize: '1.2rem', fontWeight: '700', margin: 0 }}>
+                    π {item.price.toFixed(2)}
+                  </p>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <button
+                      onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                      style={{
+                        width: '32px', height: '32px',
+                        borderRadius: '50%', border: `2px solid ${c.border}`,
+                        background: c.card, color: c.textDark,
+                        fontWeight: '700', cursor: 'pointer'
+                      }}
+                    >-</button>
+                    <span style={{ fontWeight: '700', minWidth: '24px', textAlign: 'center' }}>
+                      {item.quantity}
+                    </span>
+                    <button
+                      onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                      style={{
+                        width: '32px', height: '32px',
+                        borderRadius: '50%', border: `2px solid ${c.border}`,
+                        background: c.card, color: c.textDark,
+                        fontWeight: '700', cursor: 'pointer'
+                      }}
+                    >+</button>
+                  </div>
+                  <button
+                    onClick={() => removeFromCart(item.id)}
+                    style={{
+                      background: c.danger, color: 'white',
+                      border: 'none', borderRadius: '8px',
+                      padding: '8px 12px', cursor: 'pointer',
+                      fontWeight: '600'
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Order Summary */}
-        <div style={{
-          padding: '2rem',
-          background: c.card,
-          borderRadius: '12px',
-          border: `2px solid ${c.secondary}40`,
-          maxWidth: '550px',
-          margin: '0 auto'
-        }}>
-          <div style={{ 
-            display: 'flex', justifyContent: 'space-between',
-            fontSize: '1.5rem', fontWeight: '700',
-            color: c.textDark, marginBottom: '1.5rem',
-            paddingBottom: '1rem',
-            borderBottom: `2px solid ${c.border}`
+        {(items.length > 0 || pendingPayment) && (
+          <div style={{
+            padding: '2rem',
+            background: c.card,
+            borderRadius: '12px',
+            border: `2px solid ${c.secondary}40`,
+            maxWidth: '550px',
+            margin: '0 auto'
           }}>
-            <span>{t('total')}:</span>
-            <span style={{ color: c.secondary }}>π {totalPrice.toFixed(2)}</span>
-          </div>
-
-          {/* Pi Checkout Button */}
-          <button
-            onClick={handleCheckout}
-            disabled={!piAuthenticated || piLoading || isProcessing}
-            style={{
-              width: '100%',
-              padding: '16px',
-              background: (piAuthenticated && !piLoading && !isProcessing)
-                ? `linear-gradient(135deg, ${c.secondary} 0%, #B8860B 100%)`
-                : '#999',
-              color: 'white',
-              border: 'none',
-              borderRadius: '12px',
-              fontWeight: '700',
-              fontSize: '1.2rem',
-              cursor: (piAuthenticated && !piLoading && !isProcessing) ? 'pointer' : 'not-allowed',
-              opacity: (piAuthenticated && !piLoading && !isProcessing) ? 1 : 0.6,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '10px',
-              transition: 'all 0.3s ease'
-            }}
-          >
-            {isProcessing ? (
-              <>
-                <span style={{ animation: 'spin 1s linear infinite' }}>⏳</span>
-                Processing...
-              </>
-            ) : piLoading ? (
-              '⏳ Connecting to Pi...'
-            ) : piAuthenticated ? (
-              <>
-                <span style={{ fontSize: '1.4rem' }}>π</span>
-                {t('checkout')} with Pi
-              </>
-            ) : (
-              '❌ Pi Not Connected'
-            )}
-          </button>
-          
-          {piAuthError && (
-            <p style={{
-              marginTop: '12px',
-              color: c.danger,
-              fontSize: '0.85rem',
-              textAlign: 'center'
+            <div style={{ 
+              display: 'flex', justifyContent: 'space-between',
+              fontSize: '1.5rem', fontWeight: '700',
+              color: c.textDark, marginBottom: '1.5rem',
+              paddingBottom: '1rem',
+              borderBottom: `2px solid ${c.border}`
             }}>
-              ⚠️ {piAuthError}
-            </p>
-          )}
-        </div>
+              <span>{t('total')}:</span>
+              <span style={{ color: c.secondary }}>
+                π {(pendingPayment ? pendingPayment.amount : totalPrice).toFixed(2)}
+              </span>
+            </div>
+
+            {/* Pi Checkout Button */}
+            <button
+              onClick={handleCheckout}
+              disabled={!piAuthenticated || piLoading || isProcessing || pendingPayment}
+              style={{
+                width: '100%',
+                padding: '16px',
+                background: (piAuthenticated && !piLoading && !isProcessing && !pendingPayment)
+                  ? `linear-gradient(135deg, ${c.secondary} 0%, #B8860B 100%)`
+                  : '#999',
+                color: 'white',
+                border: 'none',
+                borderRadius: '12px',
+                fontWeight: '700',
+                fontSize: '1.2rem',
+                cursor: (piAuthenticated && !piLoading && !isProcessing && !pendingPayment) ? 'pointer' : 'not-allowed',
+                opacity: (piAuthenticated && !piLoading && !isProcessing && !pendingPayment) ? 1 : 0.6,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '10px',
+                transition: 'all 0.3s ease'
+              }}
+            >
+              {isProcessing ? (
+                <>
+                  <span style={{ animation: 'spin 1s linear infinite' }}>⏳</span>
+                  Processing...
+                </>
+              ) : piLoading ? (
+                '⏳ Connecting to Pi...'
+              ) : pendingPayment ? (
+                '⚠️ Complete Pending Payment First'
+              ) : piAuthenticated ? (
+                <>
+                  <span style={{ fontSize: '1.4rem' }}>π</span>
+                  {t('checkout')} with Pi
+                </>
+              ) : (
+                '❌ Pi Not Connected'
+              )}
+            </button>
+            
+            {piAuthError && (
+              <p style={{
+                marginTop: '12px',
+                color: c.danger,
+                fontSize: '0.85rem',
+                textAlign: 'center'
+              }}>
+                ⚠️ {piAuthError}
+              </p>
+            )}
+          </div>
+        )}
       </div>
       
       <style>{`

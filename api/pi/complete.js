@@ -1,4 +1,3 @@
-// api/pi/complete.js
 import { db } from '../../src/services/firebase.js';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
@@ -42,7 +41,7 @@ export default async function handler(req, res) {
     console.log('Body:', req.body);
     console.log('═══════════════════════════════════════');
 
-    // ✅ FIXED: Handle body properly
+    // Handle body properly
     let body = req.body;
     
     // If body is a string (not parsed), parse it
@@ -87,9 +86,14 @@ export default async function handler(req, res) {
       });
     }
 
-    // Complete payment with Pi
-    const url = `https://api.mainnet.pi/v2/payments/${paymentId}/complete`;
+    // Determine environment (sandbox vs mainnet)
+    const isSandbox = process.env.PI_SANDBOX === 'true' || !process.env.PI_API_KEY.includes('mainnet');
+    const baseUrl = isSandbox ? 'https://api.sandbox.pi' : 'https://api.mainnet.pi';
+
+    // Complete payment with Pi - FIXED: removed space in URL
+    const url = `${baseUrl}/v2/payments/${paymentId}/complete`;
     console.log('📞 Calling Pi API:', url);
+    console.log('Environment:', isSandbox ? 'SANDBOX' : 'MAINNET');
 
     const piResponse = await fetch(url, {
       method: 'POST',
