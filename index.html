@@ -4,37 +4,29 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-  <!-- ✅ CORRECT - No extra spaces -->
+  <!-- Pi SDK -->
   <script src="https://sdk.minepi.com/pi-sdk.js"></script>
-<script>
-  // Detect if running in Pi Browser
-  const isPiBrowser = navigator.userAgent.includes('PiBrowser') || 
-                      navigator.userAgent.includes('Pi Browser') ||
-                      window.Pi !== undefined;
-
-  Pi.init({ 
-    version: "2.0", 
-    sandbox: true  // Keep true for testing
-  });
-  
-  console.log('Pi SDK initialized, sandbox mode:', true);
-  console.log('User Agent:', navigator.userAgent);
-</script>
-
-<script>
-  console.log('=== DEBUG INFO ===');
-  console.log('User Agent:', navigator.userAgent);
-  console.log('URL:', window.location.href);
-  console.log('Pi SDK exists:', typeof window.Pi !== 'undefined');
-  
-  // Try to load Pi SDK manually if not present
-  if (!window.Pi) {
-    console.warn('Pi SDK not found, waiting...');
-  }
-</script>
+  <script>
+    // Detect environment
+    const hostname = window.location.hostname;
+    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+    const isVercel = hostname.includes('vercel.app');
+    
+    console.log('Hostname:', hostname);
+    console.log('Is Localhost:', isLocalhost);
+    console.log('Is Vercel:', isVercel);
+    
+    // Always use sandbox for now (until Mainnet approval)
+    Pi.init({ 
+      version: "2.0", 
+      sandbox: true
+    });
+    
+    console.log('Pi SDK initialized with sandbox:', true);
+  </script>
   
   <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-  <title>ecommerce-frontend</title>
+  <title>Louable - Premium Chocolates</title>
 </head>
 <body>
   <div id="root"></div>
