@@ -1,12 +1,29 @@
 export default async function handler(req, res) {
-  // CORS headers...
-  
+  // CORS headers first
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    const { paymentId } = req.body;
+    let body = req.body;
+    if (typeof body === 'string') {
+      try {
+        body = JSON.parse(body);
+      } catch (e) {
+        return res.status(400).json({ error: 'Invalid JSON body' });
+      }
+    }
+
+    const { paymentId } = body || {};
     
     if (!paymentId) {
       return res.status(400).json({ error: 'Missing paymentId' });
@@ -17,33 +34,40 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'PI_API_KEY not configured' });
     }
 
-    // ✅ Fixed URL (no space) and correct endpoint
-    const url = `https://api.minepi.com/v2/payments/${paymentId}/approve`;
+    const isSandbox = apiKey.includes('sandbox') || process.env.PI_SANDBOX === 'true';
+    const baseUrl = isSandbox ? 'https://api.sandbox.pi' : 'https://api.mainnet.pi';
     
-    const piResponse = await fetch(url, {
+    const url = `${baseUrl}/v2/payments/${paymentId}/approve`;
+    
+    console.log('Calling Pi API:', url);
+
+    const piRes = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': `Key ${apiKey}`,  // ✅ Key, not Bearer
+        'Authorization': `Key ${apiKey}`,
         'Content-Type': 'application/json'
       }
-      // No body needed for approve
     });
 
-    if (piResponse.ok) {
-      const result = await piResponse.json();
-      return res.status(200).json({ 
-        status: 'approved',
-        paymentId,
-        data: result 
-      });
-    } else {
-      const errorText = await piResponse.text();
-      return res.status(piResponse.status).json({ 
-        error: 'Approval failed',
-        details: errorText 
+    if (!piRes.ok) {
+      const errText = await piRes.text();
+      return res.status(piRes.status).json({ 
+        error: 'Pi API error',
+        status: piRes.status,
+        details: errText 
       });
     }
+
+    const data = await piRes.json();
+    
+    return res.status(200).json({
+      status: 'approved',
+      paymentId,
+      data
+    });
+
   } catch (error) {
+    console.error('Approve endpoint error:', error);
     return res.status(500).json({ error: error.message });
   }
 }
