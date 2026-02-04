@@ -4,25 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-  <!-- Pi SDK - FIXED: removed space in URL -->
+  <!-- ✅ CORRECT - no extra spaces -->
   <script src="https://sdk.minepi.com/pi-sdk.js"></script>
   <script>
-    // Detect environment
-    const hostname = window.location.hostname;
-    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
-    const isVercel = hostname.includes('vercel.app');
-    
-    console.log('Hostname:', hostname);
-    console.log('Is Localhost:', isLocalhost);
-    console.log('Is Vercel:', isVercel);
-    
-    // Always use sandbox for now (until Mainnet approval)
     Pi.init({ 
       version: "2.0", 
       sandbox: true
     });
-    
-    console.log('Pi SDK initialized with sandbox:', true);
   </script>
   
   <link rel="icon" type="image/svg+xml" href="/vite.svg" />
