@@ -34,7 +34,7 @@ export default async function handler(req, res) {
       ? 'https://api.sandbox.minepi.com'
       : 'https://api.minepi.com';
     
-    const url = `${baseUrl}/v2/payments/${paymentId}/approve-payment`;
+    const url = `${baseUrl}/v2/payments/${paymentId}/approve`;
     
     console.log('🌐 Environment:', isSandbox ? 'TESTNET' : 'MAINNET');
 
