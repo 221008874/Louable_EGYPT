@@ -15,12 +15,12 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { paymentId, txid, orderDetails } = req.body;
+    const { paymentId } = req.body;
     
-    console.log('📝 Complete:', { paymentId, txid: txid?.substring(0, 20) });
+    console.log('📝 Approve:', { paymentId });
 
-    if (!paymentId || !txid) {
-      return res.status(400).json({ error: 'Missing paymentId or txid' });
+    if (!paymentId) {
+      return res.status(400).json({ error: 'Missing paymentId' });
     }
 
     const apiKey = process.env.PI_API_KEY;
@@ -34,7 +34,7 @@ export default async function handler(req, res) {
       ? 'https://api.sandbox.minepi.com'
       : 'https://api.minepi.com';
     
-    const url = `${baseUrl}/v2/payments/${paymentId}/complete`;
+    const url = `${baseUrl}/v2/payments/${paymentId}/approve-payment`;
     
     console.log('🌐 Environment:', isSandbox ? 'TESTNET' : 'MAINNET');
 
@@ -43,34 +43,24 @@ export default async function handler(req, res) {
       headers: {
         'Authorization': `Key ${apiKey}`,
         'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ txid })
+      }
     });
 
     const responseText = await piResponse.text();
-
+    
     if (piResponse.ok) {
-      const piResult = JSON.parse(responseText);
-      
-      console.log('✅ Payment completed:', {
-        paymentId,
-        txid,
-        amount: piResult.amount,
-        network: isSandbox ? 'testnet' : 'mainnet'
-      });
-      
+      const result = JSON.parse(responseText);
       return res.json({ 
-        success: true, 
-        orderId: `order_${Date.now()}`,
+        success: true,
+        status: 'approved',
         paymentId,
-        txid,
         network: isSandbox ? 'testnet' : 'mainnet',
-        piData: piResult
+        data: result 
       });
     } else {
-      return res.status(piResponse.status).json({
-        error: 'Pi completion failed',
-        details: responseText
+      return res.status(piResponse.status).json({ 
+        error: 'Pi approval failed',
+        details: responseText 
       });
     }
   } catch (error) {
