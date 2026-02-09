@@ -18,8 +18,20 @@ export default function CartPage() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [pendingPayment, setPendingPayment] = useState(null)
 
-  // ✅ FIXED: Removed space at end
-  const apiUrl = 'https://ecommerce-frontend-tawny-psi.vercel.app';
+// ✅ FIXED: No trailing spaces, correct paths
+const getApiUrl = () => {
+  const hostname = window.location.hostname;
+  const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+  
+  if (isLocalhost) {
+    return 'http://localhost:5173'; // Your Vite dev port
+  }
+  // Production - NO trailing space!
+  return 'https://ecommerce-frontend-tawny-psi.vercel.app';
+};
+
+// Usage in fetch calls:
+const apiUrl = getApiUrl();
 
   const completePendingPayment = async (payment) => {
     console.log('🔄 Auto-completing pending payment:', payment.identifier);
@@ -124,11 +136,15 @@ export default function CartPage() {
         const scopes = ['username', 'payments']
         
         const onIncompletePaymentFound = async (payment) => {
-          console.log('⚠️ INCOMPLETE PAYMENT FOUND:', payment);
-          setPendingPayment(payment);
-          const completed = await completePendingPayment(payment);
-          return payment;
-        };
+  console.log('⚠️ Incomplete payment:', payment.identifier);
+  setPendingPayment(payment);
+  
+  // Auto-complete if possible
+  const completed = await completePendingPayment(payment);
+  
+  // Return payment to Pi SDK (required!)
+  return payment;
+};
 
         const auth = await window.Pi.authenticate(scopes, onIncompletePaymentFound)
         console.log('✅ Pi authenticated:', auth.user?.username)

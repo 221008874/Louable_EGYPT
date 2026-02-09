@@ -12,6 +12,7 @@ export default function OrderSuccess() {
   const { orderId, txid, totalPrice, items } = location.state || {}
 
   const colors = {
+    
     light: {
       primary: '#3E2723',
       secondary: '#D4A017',
@@ -22,6 +23,7 @@ export default function OrderSuccess() {
       success: '#8BC34A',
       border: '#E8DDD4'
     },
+
     dark: {
       primary: '#2E1B1B',
       secondary: '#D4A017',
@@ -32,6 +34,7 @@ export default function OrderSuccess() {
       success: '#8BC34A',
       border: '#3E2723'
     }
+
   }
 
   const c = theme === 'light' ? colors.light : colors.dark

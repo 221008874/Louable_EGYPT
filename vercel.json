@@ -1,12 +1,12 @@
 {
   "routes": [
     {
-      "src": "/api/pi/approve",
-      "dest": "/api/pi/approve.js"
+      "src": "/api/approve-payment",
+      "dest": "/api/approve-payment.js"
     },
     {
-      "src": "/api/pi/complete",
-      "dest": "/api/pi/complete.js"
+      "src": "/api/complete-payment",
+      "dest": "/api/complete-payment.js"
     },
     {
       "handle": "filesystem"

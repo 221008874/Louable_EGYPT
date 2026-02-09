@@ -4,15 +4,21 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-  <!-- Pi SDK -->
+  <!-- Pi SDK - NO trailing space -->
   <script src="https://sdk.minepi.com/pi-sdk.js"></script>
   <script>
+    // Auto-detect environment
+    const hostname = window.location.hostname;
+    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+    
     Pi.init({ 
       version: "2.0", 
+      sandbox: isLocalhost  // true = Testnet, false = Mainnet
     });
+    
+    console.log('🥧 Pi SDK:', isLocalhost ? 'TESTNET' : 'MAINNET');
   </script>
   
-  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
   <title>Louable - Premium Chocolates</title>
 </head>
 <body>
