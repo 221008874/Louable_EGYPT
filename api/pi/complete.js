@@ -14,10 +14,6 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-
-
-  
-
   try {
     const { paymentId, txid, orderDetails } = req.body;
     
@@ -29,18 +25,20 @@ export default async function handler(req, res) {
 
     const apiKey = process.env.PI_API_KEY;
     if (!apiKey) {
+      console.error('❌ PI_API_KEY not set');
       return res.status(500).json({ error: 'PI_API_KEY not set' });
     }
 
-    // ✅ Auto-detect environment from API key
+    // ✅ FIXED: No trailing spaces
     const isSandbox = apiKey.startsWith('sandbox_');
     const baseUrl = isSandbox 
-      ? 'https://api.sandbox.minepi.com'
-      : 'https://api.minepi.com';
+      ? 'https://api.sandbox.minepi.com'  // ✅ No space
+      : 'https://api.minepi.com';         // ✅ No space
     
     const url = `${baseUrl}/v2/payments/${paymentId}/complete`;
     
     console.log('🌐 Environment:', isSandbox ? 'TESTNET' : 'MAINNET');
+    console.log('🌐 API URL:', url);
 
     const piResponse = await fetch(url, {
       method: 'POST',
@@ -72,6 +70,7 @@ export default async function handler(req, res) {
         piData: piResult
       });
     } else {
+      console.error('❌ Pi API error:', responseText);
       return res.status(piResponse.status).json({
         error: 'Pi completion failed',
         details: responseText

@@ -2,21 +2,35 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=0.0" />
   
-  <!-- Pi SDK - NO trailing space -->
+  <!-- ✅ FIXED: No trailing space in URL -->
   <script src="https://sdk.minepi.com/pi-sdk.js"></script>
   <script>
-    // Auto-detect environment
+    // ✅ BETTER: Detect by URL pattern or hostname
     const hostname = window.location.hostname;
+    
+    // Mainnet domains (add your custom domains here)
+    const mainnetDomains = [
+      'louable.vercel.app',
+      'louable-mainnet.vercel.app',
+      'your-subdomain.pi' // if you have PiNet subdomain
+    ];
+    
+    // Check if current domain is Mainnet
+    const isMainnet = mainnetDomains.some(domain => hostname.includes(domain));
     const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+    
+    // Priority: Mainnet domains > Localhost (Testnet) > Default (Testnet)
+    const sandboxMode = !isMainnet && isLocalhost;
     
     Pi.init({ 
       version: "2.0", 
-      sandbox: isLocalhost  // true = Testnet, false = Mainnet
+      sandbox: sandboxMode  // false for Mainnet, true for localhost
     });
     
-    console.log('🥧 Pi SDK:', isLocalhost ? 'TESTNET' : 'MAINNET');
+    console.log('🥧 Pi SDK Mode:', sandboxMode ? 'TESTNET' : 'MAINNET');
+    console.log('🥧 Hostname:', hostname);
   </script>
   
   <title>Louable - Premium Chocolates</title>

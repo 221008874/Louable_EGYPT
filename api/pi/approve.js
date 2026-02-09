@@ -25,18 +25,20 @@ export default async function handler(req, res) {
 
     const apiKey = process.env.PI_API_KEY;
     if (!apiKey) {
+      console.error('❌ PI_API_KEY not set');
       return res.status(500).json({ error: 'PI_API_KEY not set' });
     }
 
-    // ✅ Auto-detect environment from API key
+    // ✅ FIXED: No trailing spaces
     const isSandbox = apiKey.startsWith('sandbox_');
     const baseUrl = isSandbox 
-      ? 'https://api.sandbox.minepi.com'
-      : 'https://api.minepi.com';
+      ? 'https://api.sandbox.minepi.com'  // ✅ No space
+      : 'https://api.minepi.com';         // ✅ No space
     
     const url = `${baseUrl}/v2/payments/${paymentId}/approve`;
     
     console.log('🌐 Environment:', isSandbox ? 'TESTNET' : 'MAINNET');
+    console.log('🌐 API URL:', url);
 
     const piResponse = await fetch(url, {
       method: 'POST',
@@ -50,6 +52,7 @@ export default async function handler(req, res) {
     
     if (piResponse.ok) {
       const result = JSON.parse(responseText);
+      console.log('✅ Approved:', result);
       return res.json({ 
         success: true,
         status: 'approved',
@@ -58,6 +61,7 @@ export default async function handler(req, res) {
         data: result 
       });
     } else {
+      console.error('❌ Pi API error:', responseText);
       return res.status(piResponse.status).json({ 
         error: 'Pi approval failed',
         details: responseText 
