@@ -18,16 +18,8 @@ export default function CartPage() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [pendingPayment, setPendingPayment] = useState(null)
 
-// ✅ FIXED: No trailing spaces, correct paths
 const getApiUrl = () => {
-  const hostname = window.location.hostname;
-  const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
-  
-  if (isLocalhost) {
-    return 'http://localhost:5173'; // Your Vite dev port
-  }
-  // Production - NO trailing space!
-  return 'https://louable.vercel.app';
+  return 'https://louable.vercel.app'; // Always Vercel, no spaces!
 };
 
 // Usage in fetch calls:
