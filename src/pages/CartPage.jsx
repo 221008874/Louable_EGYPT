@@ -43,7 +43,7 @@ const apiUrl = getApiUrl();
         return false;
       }
 
-      const response = await fetch(`${apiUrl}/api/pi/complete-payment`, {
+      const response = await fetch(`${apiUrl}/api/pi/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -212,7 +212,7 @@ const apiUrl = getApiUrl();
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-            const response = await fetch(`${apiUrl}/api/pi/approve-payment`, {
+            const response = await fetch(`${apiUrl}/api/pi/approve`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ paymentId }),
@@ -243,7 +243,7 @@ const apiUrl = getApiUrl();
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-            const response = await fetch(`${apiUrl}/api/pi/complete-payment`, {
+            const response = await fetch(`${apiUrl}/api/pi/complete`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ 
