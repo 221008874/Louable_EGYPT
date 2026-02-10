@@ -19,7 +19,7 @@ export default function CartPage() {
   const [pendingPayment, setPendingPayment] = useState(null)
 
 const getApiUrl = () => {
-  return 'https://ecommerce-frontend-pearl-eta.vercel.app/'; // Always Vercel, no spaces!
+  return 'https://elhamd-industries.vercel.app/'; // Always Vercel, no spaces!
 };
 
 // Usage in fetch calls:
