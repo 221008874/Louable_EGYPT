@@ -39,6 +39,7 @@ const translations = {
     addToCart: 'حط في العربية',
     premiumQuality: 'جودة ممتازة',
     loadingProductDetails: 'جاري تحميل تفاصيل المنتج...',
+    productImage: 'صورة المنتج',
     
     // Stock Management
     outOfStock: 'نفذت الكمية',
@@ -48,6 +49,7 @@ const translations = {
     currentlyUnavailable: 'المنتج ده مش متوفر دلوقتي',
     lowStockAlert: 'الكمية قليلة',
     onlyAvailable: 'متوفر {count} بس',
+    maxReached: 'وصلت للحد الأقصى',
     
     // Cart
     cart: 'العربية',
@@ -56,6 +58,26 @@ const translations = {
     emptyCart: 'العربية فاضية',
     addProducts: 'ضيف منتجات للعربية!',
     remove: 'شيل',
+    shoppingCart: 'عربية التسوق',
+    item: 'منتج',
+    items: 'منتجات',
+    subtotal: 'المجموع الفرعي',
+    shipping: 'الشحن',
+    free: 'مجاني',
+    checkoutWithPi: 'ادفع بـ Pi',
+    processing: 'جاري المعالجة...',
+    connectingToPi: 'جاري الاتصال بـ Pi...',
+    completePendingPaymentFirst: 'أكمل الدفع المعلق أولاً',
+    resolveStockIssues: 'حل مشاكل المخزون',
+    piNotConnected: 'Pi مش متصل',
+    stockIssuesDetected: 'تم اكتشاف مشاكل في المخزون',
+    dismiss: 'إخفاء',
+    pendingPayment: 'دفع معلق',
+    completePayment: 'أكمل الدفع',
+    onlyAvailable: 'متوفر {count} بس',
+    qty: 'الكمية',
+    each: 'للواحد',
+    more: 'أكثر',
     
     // Theme
     theme: 'الوضع',
@@ -124,6 +146,11 @@ const translations = {
     changesText: 'ممكن نعدل الشروط دي في أي وقت. الاستخدام المستمر للتطبيق يعتبر قبول للشروط المعدلة.',
     governingLaw: '9. القانون الحاكم',
     governingText: 'الشروط دي خاضعة لقوانين جمهورية مصر العربية.',
+    
+    // Pi Status
+    piConnected: '✅ Pi متصل',
+    piFailed: '❌ Pi فشل',
+    connecting: '⏳ جاري الاتصال...'
   },
   en: {
     // App & Brand
@@ -161,6 +188,7 @@ const translations = {
     addToCart: 'Add to Cart',
     premiumQuality: 'Premium Quality',
     loadingProductDetails: 'Loading product details...',
+    productImage: 'Product Image',
     
     // Stock Management
     outOfStock: 'Out of Stock',
@@ -170,6 +198,7 @@ const translations = {
     currentlyUnavailable: 'This item is currently unavailable',
     lowStockAlert: 'Low Stock Alert',
     onlyAvailable: 'Only {count} available',
+    maxReached: 'Max reached',
     
     // Cart
     cart: 'Cart',
@@ -178,6 +207,25 @@ const translations = {
     emptyCart: 'Your cart is empty',
     addProducts: 'Add some products to your cart!',
     remove: 'Remove',
+    shoppingCart: 'Shopping Cart',
+    item: 'item',
+    items: 'items',
+    subtotal: 'Subtotal',
+    shipping: 'Shipping',
+    free: 'Free',
+    checkoutWithPi: 'Checkout with Pi',
+    processing: 'Processing...',
+    connectingToPi: 'Connecting to Pi...',
+    completePendingPaymentFirst: 'Complete Pending Payment First',
+    resolveStockIssues: 'Resolve Stock Issues',
+    piNotConnected: 'Pi Not Connected',
+    stockIssuesDetected: 'Stock Issues Detected',
+    dismiss: 'Dismiss',
+    pendingPayment: 'Pending Payment',
+    completePayment: 'Complete Payment',
+    qty: 'Qty',
+    each: 'each',
+    more: 'more',
     
     // Theme
     theme: 'Theme',
@@ -246,13 +294,18 @@ const translations = {
     changesText: 'We may modify these terms at any time. Continued use of the App constitutes acceptance of the modified terms.',
     governingLaw: '9. Governing Law',
     governingText: 'These terms are governed by the laws of Egypt.',
+    
+    // Pi Status
+    piConnected: '✅ Pi Connected',
+    piFailed: '❌ Pi Failed',
+    connecting: '⏳ Connecting...'
   }
 }
 
 const LanguageContext = createContext()
 
 export function LanguageProvider({ children }) {
-  const [lang, setLang] = useState('ar') // Default: English
+  const [lang, setLang] = useState('ar') // Default: Arabic
 
   // Load saved language
   useEffect(() => {
