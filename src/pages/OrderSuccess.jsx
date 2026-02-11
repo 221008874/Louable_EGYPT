@@ -62,21 +62,21 @@ export default function OrderSuccess() {
         🎉
       </div>
       
-      <h1 style={{
+            <h1 style={{
         fontSize: '2.5rem',
         color: c.success,
         marginBottom: '1rem',
         fontWeight: '700'
       }}>
-        Order Confirmed!
+        {t('orderConfirmed')}
       </h1>
       
-      <p style={{
+            <p style={{
         fontSize: '1.2rem',
         color: c.textLight,
         marginBottom: '2rem'
       }}>
-        Thank you for your purchase. Your order has been successfully processed.
+        {t('thankYouPurchase')}
       </p>
       
       <div style={{
@@ -88,15 +88,15 @@ export default function OrderSuccess() {
         border: `2px solid ${c.border}`,
         marginBottom: '2rem'
       }}>
-        <div style={{ marginBottom: '1rem' }}>
-          <span style={{ color: c.textLight }}>Order ID: </span>
+               <div style={{ marginBottom: '1rem' }}>
+          <span style={{ color: c.textLight }}>{t('orderId')} </span>
           <strong style={{ color: c.textDark, fontFamily: 'monospace' }}>
             {orderId}
           </strong>
         </div>
         
-        <div style={{ marginBottom: '1rem' }}>
-          <span style={{ color: c.textLight }}>Transaction: </span>
+                <div style={{ marginBottom: '1rem' }}>
+          <span style={{ color: c.textLight }}>{t('transaction')} </span>
           <strong style={{ color: c.textDark, fontFamily: 'monospace', fontSize: '0.9rem' }}>
             {txid?.substring(0, 20)}...
           </strong>
@@ -108,7 +108,7 @@ export default function OrderSuccess() {
           borderRadius: '8px',
           marginTop: '1rem'
         }}>
-          <span style={{ color: c.textLight }}>Total Paid: </span>
+                   <span style={{ color: c.textLight }}>{t('totalPaid')} </span>
           <strong style={{ color: c.secondary, fontSize: '1.5rem' }}>
             π {totalPrice?.toFixed(2)}
           </strong>
@@ -131,7 +131,7 @@ export default function OrderSuccess() {
         onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
         onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
       >
-        🛍️ Continue Shopping
+                🛍️ {t('continueShopping')}
       </button>
       
       <style>{`
