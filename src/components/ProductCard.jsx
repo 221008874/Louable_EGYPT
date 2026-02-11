@@ -1,7 +1,7 @@
 // src/components/ProductCard.jsx
-import { useLanguage } from '../context/LanguageContext.jsx'
-import { useTheme } from '../context/ThemeContext.jsx'
-import { useCart } from '../context/CartContext.jsx'
+import { useLanguage } from '../context/LanguageContext'
+import { useTheme } from '../context/ThemeContext'
+import { useCart } from '../context/CartContext'
 import { Link } from 'react-router-dom'
 
 export default function ProductCard({ product }) {
