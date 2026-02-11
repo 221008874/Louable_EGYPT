@@ -118,7 +118,14 @@ img {
 ::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(135deg, #E8A93C 0%, #6D4C41 100%);
 }
-
+@keyframes cartBadgePulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
 /* Smooth Animations */
 @keyframes fadeIn {
   from { 
