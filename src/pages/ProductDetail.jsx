@@ -124,13 +124,13 @@ export default function ProductDetail() {
             animation: 'spin 1s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite'
           }}></div>
         </div>
-        <p style={{
+                <p style={{
           color: c.textDark,
           fontSize: isMobile ? '1rem' : '1.1rem',
           fontWeight: '600',
           padding: '0 1rem'
         }}>
-          Loading product details...
+          {t('loadingProductDetails')}
         </p>
         <style>{`
           @keyframes spin {
@@ -288,7 +288,7 @@ export default function ProductDetail() {
             zIndex: 10
           }}>
             {isOutOfStock ? (
-              <span style={{
+                            <span style={{
                 background: 'linear-gradient(135deg, #EF4444, #DC2626)',
                 color: '#FFFFFF',
                 padding: isMobile ? '10px 16px' : '12px 20px',
@@ -303,10 +303,10 @@ export default function ProductDetail() {
                 gap: '8px'
               }}>
                 <span>❌</span>
-                Out of Stock
+                {t('outOfStock')}
               </span>
             ) : isLowStock ? (
-              <span style={{
+                            <span style={{
                 background: 'linear-gradient(135deg, #F59E0B, #D97706)',
                 color: '#FFFFFF',
                 padding: isMobile ? '10px 16px' : '12px 20px',
@@ -322,10 +322,10 @@ export default function ProductDetail() {
                 animation: 'pulse 2s ease-in-out infinite'
               }}>
                 <span>⚡</span>
-                Only {stock} left!
+                {t('onlyLeft', { count: stock })}
               </span>
             ) : (
-              <span style={{
+                            <span style={{
                 background: 'linear-gradient(135deg, #10B981, #059669)',
                 color: '#FFFFFF',
                 padding: isMobile ? '10px 16px' : '12px 20px',
@@ -338,7 +338,7 @@ export default function ProductDetail() {
                 gap: '8px'
               }}>
                 <span>✓</span>
-                In Stock: {stock}
+                {t('inStock', { count: stock })}
               </span>
             )}
           </div>
@@ -377,7 +377,7 @@ export default function ProductDetail() {
                   alignItems: 'center',
                   justifyContent: 'center'
                 }}>
-                  <span style={{
+                                    <span style={{
                     background: 'linear-gradient(135deg, #EF4444, #DC2626)',
                     color: '#FFFFFF',
                     padding: isMobile ? '16px 32px' : '24px 48px',
@@ -389,7 +389,7 @@ export default function ProductDetail() {
                     textTransform: 'uppercase',
                     letterSpacing: '2px'
                   }}>
-                    OUT OF STOCK
+                    {t('outOfStock').toUpperCase()}
                   </span>
                 </div>
               )}
@@ -406,7 +406,7 @@ export default function ProductDetail() {
               }}></div>
 
               {/* Premium Badge */}
-              <div style={{
+                          <div style={{
                 position: 'absolute',
                 top: isMobile ? '12px' : 'clamp(16px, 3.5vw, 20px)',
                 left: lang === 'ar' ? 'auto' : (isMobile ? '12px' : 'clamp(16px, 3.5vw, 20px)'),
@@ -426,7 +426,7 @@ export default function ProductDetail() {
                 animation: 'badgeGlow 2s ease-in-out infinite'
               }}>
                 <span style={{ fontSize: isMobile ? '1rem' : '1.2rem' }}>✨</span>
-                Premium{isMobile ? '' : ' Quality'}
+                {t('premiumQuality')}
               </div>
             </div>
           ) : (
@@ -458,7 +458,7 @@ export default function ProductDetail() {
                   justifyContent: 'center',
                   zIndex: 10
                 }}>
-                  <span style={{
+                                   <span style={{
                     background: '#EF4444',
                     color: '#FFFFFF',
                     padding: '16px 32px',
@@ -467,7 +467,7 @@ export default function ProductDetail() {
                     fontSize: '1.2rem',
                     transform: 'rotate(-10deg)'
                   }}>
-                    OUT OF STOCK
+                    {t('outOfStock').toUpperCase()}
                   </span>
                 </div>
               )}
@@ -580,22 +580,22 @@ export default function ProductDetail() {
                   {isOutOfStock ? '❌' : isLowStock ? '⚡' : '✓'}
                 </span>
                 <div>
-                  <p style={{
+                                   <p style={{
                     margin: 0,
                     fontWeight: '800',
                     fontSize: isMobile ? '1rem' : '1.1rem',
                     color: isOutOfStock ? '#991B1B' : isLowStock ? '#92400E' : '#065F46'
                   }}>
-                    {isOutOfStock ? 'Out of Stock' : isLowStock ? 'Low Stock Alert' : 'Available in Stock'}
+                    {isOutOfStock ? t('outOfStock') : isLowStock ? t('lowStockAlert') : t('availableInStock')}
                   </p>
-                  <p style={{
+                                   <p style={{
                     margin: '4px 0 0 0',
                     fontSize: isMobile ? '0.9rem' : '0.95rem',
                     color: isOutOfStock ? '#B91C1C' : isLowStock ? '#B45309' : '#047857'
                   }}>
                     {isOutOfStock 
-                      ? 'This item is currently unavailable' 
-                      : `${stock} units available for purchase`}
+                      ? t('currentlyUnavailable') 
+                      : t('inStock', { count: stock })}
                   </p>
                 </div>
               </div>
@@ -685,8 +685,8 @@ export default function ProductDetail() {
               }}>
                 <span style={{ fontSize: isMobile ? '1.3rem' : '1.5rem' }}>📦</span>
                 <strong>{t('piecesPerBox')}:</strong> 
-                <span style={{ color: c.secondary, fontWeight: '800' }}>
-                  {product.piecesPerBox} pieces
+                               <span style={{ color: c.secondary, fontWeight: '800' }}>
+                  {product.piecesPerBox} {t('pieces')}
                 </span>
               </p>
             </div>
@@ -843,11 +843,11 @@ export default function ProductDetail() {
                 <span style={{ fontSize: '1.3rem' }}>
                   {isOutOfStock ? '🚫' : !canAddToCart ? '⚠️' : '✓'}
                 </span>
-                {isOutOfStock 
-                  ? 'Out of Stock' 
+                                {isOutOfStock 
+                  ? t('outOfStock') 
                   : !canAddToCart 
-                    ? `Only ${stock} Available`
-                    : `Add ${quantity} to Cart`}
+                    ? t('onlyAvailable', { count: stock })
+                    : `${t('addToCart')} (${quantity})`}
               </button>
               
               <button
