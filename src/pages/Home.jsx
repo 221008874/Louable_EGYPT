@@ -112,8 +112,8 @@ export default function Home() {
             animation: 'spin 1s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite'
           }}></div>
         </div>
-        <p style={{ fontWeight: '600', letterSpacing: '1px', textAlign: 'center' }}>
-          Loading premium chocolates...
+                <p style={{ fontWeight: '600', letterSpacing: '1px', textAlign: 'center' }}>
+          {t('loadingPremiumChocolates')}
         </p>
         <style>{`
           @keyframes spin {
@@ -513,7 +513,7 @@ export default function Home() {
             marginBottom: isMobile ? '2rem' : 'clamp(3rem, 6vw, 4rem)',
             animation: 'fadeInUp 0.8s ease-out'
           }}>
-            <h2 style={{
+                       <h2 style={{
               fontSize: isMobile ? 'clamp(1.8rem, 7vw, 2.5rem)' : 'clamp(2rem, 5vw, 3rem)',
               fontFamily: 'Georgia, serif',
               color: c.textDark,
@@ -521,7 +521,7 @@ export default function Home() {
               marginBottom: '1rem',
               letterSpacing: '-1px'
             }}>
-              Our Collection
+              {t('ourCollection')}
             </h2>
             <div style={{
               width: isMobile ? '60px' : 'clamp(60px, 15vw, 80px)',
@@ -552,19 +552,19 @@ export default function Home() {
               >
                 🍫
               </div>
-              <p style={{ 
+                            <p style={{ 
                 fontSize: isMobile ? '1.1rem' : 'clamp(1.2rem, 3vw, 1.5rem)', 
                 fontFamily: 'Georgia, serif',
                 fontWeight: '600'
               }}>
-                No products available yet
+                {t('noProductsAvailable')}
               </p>
               <p style={{ 
                 fontSize: isMobile ? '0.95rem' : 'clamp(1rem, 2.5vw, 1.1rem)',
                 opacity: 0.7,
                 marginTop: '0.5rem'
               }}>
-                Check back soon for delicious chocolates!
+                {t('checkBackSoon')}
               </p>
             </div>
           ) : (
@@ -706,7 +706,7 @@ export default function Home() {
               }}
             >
               {[
-                { key: 'terms-of-service', label: t('terms-of-service'), path: '/terms-of-service' },
+                { key: 'terms-of-service', label: t('termsOfService'), path: '/terms-of-service' },
                 { key: 'privacy', label: t('privacy'), path: '/privacy' },
                 { key: 'aboutUs', label: t('aboutUs'), path: '/about' },
                 { key: 'contact', label: t('contact'), path: '#' }
