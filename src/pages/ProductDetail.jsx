@@ -1,5 +1,5 @@
 // src/pages/ProductDetail_RESPONSIVE.jsx
-// Enhanced version with improved responsive design and STOCK MANAGEMENT
+// Enhanced version with improved responsive design, STOCK MANAGEMENT, and premium aesthetics
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useLanguage } from '../context/LanguageContext'
@@ -16,6 +16,9 @@ export default function ProductDetail() {
   const { theme, getImage } = useTheme()
   const [product, setProduct] = useState(null)
   const [quantity, setQuantity] = useState(1)
+  const [selectedFlavor, setSelectedFlavor] = useState(null)
+  const [showAddedNotification, setShowAddedNotification] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
 
   const [windowWidth, setWindowWidth] = useState(
     typeof window !== 'undefined' ? window.innerWidth : 1024
@@ -72,7 +75,11 @@ export default function ProductDetail() {
         const docRef = doc(db, 'products', id)
         const docSnap = await getDoc(docRef)
         if (docSnap.exists()) {
-          setProduct({ id: docSnap.id, ...docSnap.data() })
+          const data = docSnap.data()
+          setProduct({ id: docSnap.id, ...data })
+          if (data.flavors && data.flavors.length > 0) {
+            setSelectedFlavor(data.flavors[0])
+          }
         } else {
           navigate('/home')
         }
@@ -89,6 +96,8 @@ export default function ProductDetail() {
   const isOutOfStock = stock <= 0
   const isLowStock = stock > 0 && stock < 10
   const canAddToCart = stock >= quantity
+  const rating = product?.rating || 4.8
+  const reviews = product?.reviews || 245
 
   if (!product) {
     return (
@@ -124,7 +133,7 @@ export default function ProductDetail() {
             animation: 'spin 1s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite'
           }}></div>
         </div>
-                <p style={{
+        <p style={{
           color: c.textDark,
           fontSize: isMobile ? '1rem' : '1.1rem',
           fontWeight: '600',
@@ -144,94 +153,87 @@ export default function ProductDetail() {
   const handleAddToCart = () => {
     if (isOutOfStock || !canAddToCart) return
     
-    // Add multiple quantities if selected
     for (let i = 0; i < quantity; i++) {
-      addToCart(product)
+      addToCart({ ...product, selectedFlavor })
     }
     
-    const successMsg = document.createElement('div')
-    successMsg.innerHTML = `
-      <div style="display: flex; align-items: center; gap: 12px;">
-        <span style="font-size: 1.5rem;">✓</span>
-        <span>${quantity} item(s) added to cart!</span>
-      </div>
-    `
-    successMsg.style.cssText = `
-      position: fixed;
-      top: ${isMobile ? '80px' : '100px'};
-      left: 50%;
-      transform: translateX(-50%);
-      background: linear-gradient(135deg, ${c.success}, #7CB342);
-      color: white;
-      padding: ${isMobile ? '14px 24px' : '16px 32px'};
-      borderRadius: 12px;
-      font-weight: 700;
-      boxShadow: 0 8px 24px rgba(139, 195, 74, 0.5);
-      z-index: 1000;
-      animation: slideInBounce 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
-      font-size: ${isMobile ? '0.9rem' : 'clamp(0.95rem, 3vw, 1.05rem)'};
-      max-width: 90%;
-    `
-    document.body.appendChild(successMsg)
-    setTimeout(() => {
-      successMsg.style.animation = 'slideOut 0.3s ease-out forwards'
-      setTimeout(() => successMsg.remove(), 300)
-    }, 2000)
+    setShowAddedNotification(true)
+    setTimeout(() => setShowAddedNotification(false), 2500)
   }
 
   return (
     <div style={{ 
-      padding: isMobile ? '1.5rem 1rem' : 'clamp(24px, 4vw, 32px) clamp(16px, 3vw, 24px)',
+      padding: isMobile ? '1rem' : '2rem',
       backgroundColor: c.background,
       minHeight: '100vh',
       animation: 'fadeIn 0.5s ease-out'
     }}>
-      <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
+      {/* Added to Cart Notification */}
+      {showAddedNotification && (
+        <div style={{
+          position: 'fixed',
+          top: isMobile ? '80px' : '100px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: `linear-gradient(135deg, ${c.success}, #7CB342)`,
+          color: 'white',
+          padding: isMobile ? '12px 24px' : '16px 32px',
+          borderRadius: '12px',
+          fontWeight: '700',
+          boxShadow: '0 8px 24px rgba(139, 195, 74, 0.5)',
+          zIndex: 1000,
+          animation: 'slideInBounce 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          fontSize: isMobile ? '0.9rem' : '1rem'
+        }}>
+          <span>✓</span>
+          <span>{quantity} {quantity === 1 ? t('item') : t('items')} {t('addedToCart')}</span>
+        </div>
+      )}
+
+      <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
         {/* Header */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: isMobile ? '1.5rem' : 'clamp(24px, 5vw, 32px)',
-          gap: isMobile ? '12px' : 'clamp(16px, 4vw, 20px)',
-          flexWrap: 'wrap'
+          marginBottom: isMobile ? '1.5rem' : '2.5rem',
+          gap: isMobile ? '12px' : '20px',
+          flexWrap: 'wrap',
+          animation: 'fadeInDown 0.6s ease-out'
         }}>
           <button
             onClick={() => navigate('/home')}
             style={{
-              background: 'transparent',
+              background: `linear-gradient(135deg, ${c.primary}15, ${c.primary}05)`,
               border: `2px solid ${c.primary}`,
               color: c.primary,
               cursor: 'pointer',
-              fontSize: isMobile ? '0.85rem' : 'clamp(0.9rem, 2.8vw, 1rem)',
+              fontSize: isMobile ? '0.85rem' : '0.95rem',
               fontWeight: '700',
               display: 'flex',
               alignItems: 'center',
-              gap: isMobile ? '6px' : 'clamp(8px, 2vw, 10px)',
-              padding: isMobile ? '10px 16px' : 'clamp(10px, 2.5vw, 12px) clamp(20px, 4vw, 24px)',
-              borderRadius: isMobile ? '8px' : 'clamp(8px, 2vw, 10px)',
+              gap: isMobile ? '6px' : '10px',
+              padding: isMobile ? '10px 16px' : '12px 24px',
+              borderRadius: '10px',
               transition: 'all 0.3s ease',
               whiteSpace: 'nowrap'
             }}
             onMouseEnter={(e) => {
               if (windowWidth >= 768) {
                 e.currentTarget.style.background = c.primary
-                e.currentTarget.style.color = theme === 'light' ? '#FFFFFF' : c.textDark
+                e.currentTarget.style.color = '#FFFFFF'
                 e.currentTarget.style.transform = 'translateX(-6px)'
               }
             }}
             onMouseLeave={(e) => {
               if (windowWidth >= 768) {
-                e.currentTarget.style.background = 'transparent'
+                e.currentTarget.style.background = `linear-gradient(135deg, ${c.primary}15, ${c.primary}05)`
                 e.currentTarget.style.color = c.primary
                 e.currentTarget.style.transform = 'translateX(0)'
               }
-            }}
-            onTouchStart={(e) => {
-              e.currentTarget.style.transform = 'scale(0.95)'
-            }}
-            onTouchEnd={(e) => {
-              e.currentTarget.style.transform = 'scale(1)'
             }}
           >
             <span>←</span>
@@ -239,358 +241,413 @@ export default function ProductDetail() {
           </button>
           
           <div style={{
-            height: isMobile ? '50px' : 'clamp(55px, 12vw, 70px)'
+            height: isMobile ? '45px' : '60px'
           }}>
             <img 
               src={getImage('logo')} 
               alt="Louable" 
               style={{ 
                 height: '100%',
-                filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.15))'
+                filter: theme === 'dark' ? 'brightness(1.1)' : 'none'
               }} 
             />
           </div>
         </div>
 
-        {/* Product Details Card */}
+        {/* Main Product Section */}
         <div style={{
-          background: c.card,
-          borderRadius: isMobile ? '12px' : 'clamp(16px, 3vw, 20px)',
-          padding: isMobile ? '20px' : 'clamp(24px, 5vw, 40px)',
-          border: `1px solid ${c.border}`,
-          boxShadow: theme === 'light'
-            ? '0 8px 32px rgba(62, 39, 35, 0.12)'
-            : '0 8px 32px rgba(0, 0, 0, 0.4)',
-          position: 'relative',
-          overflow: 'hidden',
-          opacity: isOutOfStock ? 0.9 : 1
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+          gap: isMobile ? '2rem' : '3rem',
+          animation: 'fadeInUp 0.6s ease-out 0.1s backwards'
         }}>
-          {/* Decorative background */}
-          {!isMobile && (
-            <div style={{
-              position: 'absolute',
-              top: '-50%',
-              right: '-20%',
-              width: '400px',
-              height: '400px',
-              background: `radial-gradient(circle, ${c.secondary}08, transparent)`,
-              borderRadius: '50%',
-              filter: 'blur(60px)',
-              pointerEvents: 'none'
-            }}></div>
-          )}
-
-          {/* Stock Badge - Top Right */}
+          {/* Product Image Section */}
           <div style={{
-            position: 'absolute',
-            top: isMobile ? '16px' : '24px',
-            right: isMobile ? '16px' : '24px',
-            zIndex: 10
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1.5rem'
           }}>
-            {isOutOfStock ? (
-                            <span style={{
-                background: 'linear-gradient(135deg, #EF4444, #DC2626)',
-                color: '#FFFFFF',
-                padding: isMobile ? '10px 16px' : '12px 20px',
-                borderRadius: '24px',
-                fontSize: isMobile ? '0.85rem' : '0.95rem',
-                fontWeight: '800',
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px',
-                boxShadow: '0 6px 20px rgba(239, 68, 68, 0.4)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
+            {product?.imageUrl ? (
+              <div style={{ 
+                position: 'relative', 
+                borderRadius: '16px',
+                overflow: 'hidden',
+                boxShadow: theme === 'light'
+                  ? '0 12px 40px rgba(62, 39, 35, 0.15)'
+                  : '0 12px 40px rgba(0, 0, 0, 0.5)',
+                backgroundColor: c.background,
+                aspectRatio: '1/1',
+                animation: imageLoaded ? 'none' : 'pulse 2s ease-in-out infinite'
               }}>
-                <span>❌</span>
-                {t('outOfStock')}
-              </span>
-            ) : isLowStock ? (
-                            <span style={{
-                background: 'linear-gradient(135deg, #F59E0B, #D97706)',
-                color: '#FFFFFF',
-                padding: isMobile ? '10px 16px' : '12px 20px',
-                borderRadius: '24px',
-                fontSize: isMobile ? '0.85rem' : '0.95rem',
-                fontWeight: '800',
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px',
-                boxShadow: '0 6px 20px rgba(245, 158, 11, 0.4)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                animation: 'pulse 2s ease-in-out infinite'
-              }}>
-                <span>⚡</span>
-                {t('onlyLeft', { count: stock })}
-              </span>
-            ) : (
-                            <span style={{
-                background: 'linear-gradient(135deg, #10B981, #059669)',
-                color: '#FFFFFF',
-                padding: isMobile ? '10px 16px' : '12px 20px',
-                borderRadius: '24px',
-                fontSize: isMobile ? '0.85rem' : '0.95rem',
-                fontWeight: '700',
-                boxShadow: '0 6px 20px rgba(16, 185, 129, 0.3)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}>
-                <span>✓</span>
-                {t('inStock', { count: stock })}
-              </span>
-            )}
-          </div>
-
-          {/* Product Image */}
-          {product?.imageUrl ? (
-            <div style={{ 
-              position: 'relative', 
-              marginBottom: isMobile ? '20px' : 'clamp(28px, 6vw, 40px)',
-              borderRadius: isMobile ? '10px' : 'clamp(12px, 2.5vw, 16px)',
-              overflow: 'hidden',
-              boxShadow: theme === 'light'
-                ? '0 8px 24px rgba(0,0,0,0.12)'
-                : '0 8px 24px rgba(0,0,0,0.4)'
-            }}>
-              <img
-                src={product.imageUrl}
-                alt={product.name}
-                style={{
-                  width: '100%',
-                  height: 'auto',
-                  maxHeight: isMobile ? 'clamp(300px, 50vh, 400px)' : 'clamp(350px, 55vw, 450px)',
-                  objectFit: 'cover',
-                  borderRadius: isMobile ? '10px' : 'clamp(12px, 2.5vw, 16px)',
-                  filter: isOutOfStock ? 'grayscale(0.6)' : 'brightness(1)'
-                }}
-              />
-              
-              {/* Out of Stock Overlay */}
-              {isOutOfStock && (
+                <img
+                  src={product.imageUrl}
+                  alt={product.name}
+                  onLoad={() => setImageLoaded(true)}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    borderRadius: '16px',
+                    filter: isOutOfStock ? 'grayscale(0.6)' : 'brightness(1)',
+                    transition: 'transform 0.5s ease'
+                  }}
+                />
+                
+                {/* Premium Badge */}
                 <div style={{
                   position: 'absolute',
-                  inset: 0,
-                  background: 'rgba(0, 0, 0, 0.6)',
+                  top: isMobile ? '12px' : '16px',
+                  left: isMobile ? '12px' : '16px',
+                  background: 'linear-gradient(135deg, #FFD700, #D4A017)',
+                  color: '#FFFFFF',
+                  padding: '8px 16px',
+                  borderRadius: '24px',
+                  fontSize: '0.8rem',
+                  fontWeight: '800',
+                  boxShadow: '0 6px 20px rgba(212, 160, 23, 0.6)',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center'
+                  gap: '6px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  animation: 'badgeGlow 2s ease-in-out infinite'
                 }}>
-                                    <span style={{
-                    background: 'linear-gradient(135deg, #EF4444, #DC2626)',
-                    color: '#FFFFFF',
-                    padding: isMobile ? '16px 32px' : '24px 48px',
-                    borderRadius: '12px',
-                    fontWeight: '900',
-                    fontSize: isMobile ? '1.2rem' : '1.8rem',
-                    transform: 'rotate(-10deg)',
-                    boxShadow: '0 12px 40px rgba(0, 0, 0, 0.5)',
-                    textTransform: 'uppercase',
-                    letterSpacing: '2px'
-                  }}>
-                    {t('outOfStock').toUpperCase()}
-                  </span>
+                  <span>✨</span>
+                  {t('premiumQuality')}
                 </div>
-              )}
-              
-              {/* Gradient overlay */}
-              <div style={{
-                position: 'absolute',
-                bottom: 0,
-                left: 0,
-                right: 0,
-                height: '40%',
-                background: 'linear-gradient(to bottom, transparent, rgba(0,0,0,0.3))',
-                pointerEvents: 'none'
-              }}></div>
 
-              {/* Premium Badge */}
-                          <div style={{
-                position: 'absolute',
-                top: isMobile ? '12px' : 'clamp(16px, 3.5vw, 20px)',
-                left: lang === 'ar' ? 'auto' : (isMobile ? '12px' : 'clamp(16px, 3.5vw, 20px)'),
-                right: lang === 'ar' ? (isMobile ? '12px' : 'clamp(16px, 3.5vw, 20px)') : 'auto',
-                background: 'linear-gradient(135deg, #FFD700, #D4A017)',
-                color: '#FFFFFF',
-                padding: isMobile ? '6px 12px' : 'clamp(8px, 2vw, 10px) clamp(16px, 3.5vw, 20px)',
-                borderRadius: isMobile ? '8px' : 'clamp(8px, 2vw, 10px)',
-                fontSize: isMobile ? '0.75rem' : 'clamp(0.85rem, 2.8vw, 1rem)',
-                fontWeight: '800',
-                boxShadow: '0 6px 20px rgba(212, 160, 23, 0.6)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                textTransform: 'uppercase',
-                letterSpacing: '1px',
-                animation: 'badgeGlow 2s ease-in-out infinite'
-              }}>
-                <span style={{ fontSize: isMobile ? '1rem' : '1.2rem' }}>✨</span>
-                {t('premiumQuality')}
+                {/* Stock Badge */}
+                <div style={{
+                  position: 'absolute',
+                  top: isMobile ? '12px' : '16px',
+                  right: isMobile ? '12px' : '16px'
+                }}>
+                  {isOutOfStock ? (
+                    <span style={{
+                      background: 'linear-gradient(135deg, #EF4444, #DC2626)',
+                      color: '#FFFFFF',
+                      padding: '8px 14px',
+                      borderRadius: '20px',
+                      fontSize: '0.75rem',
+                      fontWeight: '800',
+                      boxShadow: '0 4px 12px rgba(239, 68, 68, 0.4)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}>
+                      <span>❌</span>
+                      {t('outOfStock')}
+                    </span>
+                  ) : isLowStock ? (
+                    <span style={{
+                      background: 'linear-gradient(135deg, #F59E0B, #D97706)',
+                      color: '#FFFFFF',
+                      padding: '8px 14px',
+                      borderRadius: '20px',
+                      fontSize: '0.75rem',
+                      fontWeight: '800',
+                      boxShadow: '0 4px 12px rgba(245, 158, 11, 0.4)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      animation: 'pulse 2s ease-in-out infinite'
+                    }}>
+                      <span>⚡</span>
+                      {t('onlyLeft', { count: stock })}
+                    </span>
+                  ) : (
+                    <span style={{
+                      background: 'linear-gradient(135deg, #10B981, #059669)',
+                      color: '#FFFFFF',
+                      padding: '8px 14px',
+                      borderRadius: '20px',
+                      fontSize: '0.75rem',
+                      fontWeight: '700',
+                      boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}>
+                      <span>✓</span>
+                      {t('inStock', { count: stock })}
+                    </span>
+                  )}
+                </div>
+
+                {/* Out of Stock Overlay */}
+                {isOutOfStock && (
+                  <div style={{
+                    position: 'absolute',
+                    inset: 0,
+                    background: 'rgba(0, 0, 0, 0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: '16px'
+                  }}>
+                    <span style={{
+                      background: 'linear-gradient(135deg, #EF4444, #DC2626)',
+                      color: '#FFFFFF',
+                      padding: '16px 32px',
+                      borderRadius: '12px',
+                      fontWeight: '800',
+                      fontSize: '1.3rem',
+                      transform: 'rotate(-10deg)',
+                      boxShadow: '0 12px 40px rgba(0, 0, 0, 0.5)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '2px'
+                    }}>
+                      {t('outOfStock')}
+                    </span>
+                  </div>
+                )}
               </div>
-            </div>
-          ) : (
-            <div style={{
-              width: '100%',
-              height: isMobile ? '250px' : 'clamp(350px, 55vw, 450px)',
-              background: theme === 'light' 
-                ? 'linear-gradient(135deg, #E8DDD4 0%, #D4C4B8 100%)'
-                : 'linear-gradient(135deg, #3E2723 0%, #5D4037 100%)',
-              borderRadius: isMobile ? '10px' : 'clamp(12px, 2.5vw, 16px)',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'center',
-              alignItems: 'center',
-              marginBottom: isMobile ? '20px' : 'clamp(28px, 6vw, 40px)',
-              fontSize: isMobile ? '3.5rem' : 'clamp(5rem, 15vw, 7rem)',
-              border: `2px solid ${c.border}`,
-              position: 'relative',
-              overflow: 'hidden',
-              opacity: isOutOfStock ? 0.7 : 1
-            }}>
-              {isOutOfStock && (
-                <div style={{
-                  position: 'absolute',
-                  inset: 0,
-                  background: 'rgba(0, 0, 0, 0.5)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  zIndex: 10
-                }}>
-                                   <span style={{
-                    background: '#EF4444',
-                    color: '#FFFFFF',
-                    padding: '16px 32px',
-                    borderRadius: '8px',
-                    fontWeight: '800',
-                    fontSize: '1.2rem',
-                    transform: 'rotate(-10deg)'
-                  }}>
-                    {t('outOfStock').toUpperCase()}
-                  </span>
-                </div>
-              )}
+            ) : (
               <div style={{
-                position: 'absolute',
-                inset: 0,
-                background: 'radial-gradient(circle, rgba(212, 160, 23, 0.05), transparent)',
-                animation: 'pulse 3s ease-in-out infinite'
-              }}></div>
-              <span style={{ animation: 'bounce 2s ease-in-out infinite' }}>🍫</span>
-              <p style={{ 
-                fontSize: isMobile ? '0.95rem' : 'clamp(1rem, 3.5vw, 1.2rem)', 
-                color: c.textLight, 
-                marginTop: '20px',
+                width: '100%',
+                borderRadius: '16px',
+                overflow: 'hidden',
+                background: theme === 'light' 
+                  ? 'linear-gradient(135deg, #E8DDD4 0%, #D4C4B8 100%)'
+                  : 'linear-gradient(135deg, #3E2723 0%, #5D4037 100%)',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                alignItems: 'center',
+                aspectRatio: '1/1',
+                fontSize: '4rem',
+                position: 'relative',
+                boxShadow: theme === 'light'
+                  ? '0 12px 40px rgba(62, 39, 35, 0.15)'
+                  : '0 12px 40px rgba(0, 0, 0, 0.5)',
+                border: `2px solid ${c.border}`
+              }}>
+                <span style={{ animation: 'bounce 2s ease-in-out infinite' }}>🍫</span>
+                <p style={{ 
+                  fontSize: '1rem', 
+                  color: c.textLight, 
+                  marginTop: '20px',
+                  fontWeight: '600'
+                }}>
+                  {t('productImage')}
+                </p>
+              </div>
+            )}
+
+            {/* Image Info */}
+            <div style={{
+              background: `${c.secondary}15`,
+              padding: '12px 16px',
+              borderRadius: '12px',
+              border: `2px solid ${c.secondary}40`,
+              textAlign: 'center'
+            }}>
+              <p style={{
+                margin: 0,
+                fontSize: '0.85rem',
+                color: c.textLight,
                 fontWeight: '600'
               }}>
-                Product Image
+                📦 {t('packingStandard')}: {product.piecesPerBox} {t('pieces')}
               </p>
             </div>
-          )}
+          </div>
 
-          {/* Product Info */}
-          <div style={{ position: 'relative', zIndex: 1 }}>
-            <h1 style={{ 
-              fontSize: isMobile ? 'clamp(1.5rem, 8vw, 2.2rem)' : 'clamp(1.8rem, 6vw, 3rem)',
-              marginBottom: isMobile ? '12px' : 'clamp(16px, 3.5vw, 24px)',
-              color: c.textDark,
-              fontWeight: '700',
-              letterSpacing: '-1px',
-              lineHeight: 1.2,
-              fontFamily: 'Georgia, serif'
-            }}>
-              {product.name}
-            </h1>
-            
-            {/* Price and Rating */}
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: isMobile ? '12px' : 'clamp(16px, 4vw, 24px)',
-              marginBottom: isMobile ? '20px' : 'clamp(24px, 5vw, 32px)',
-              flexWrap: 'wrap',
-              justifyContent: isMobile ? 'center' : 'flex-start'
-            }}>
+          {/* Product Info Section */}
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1.5rem'
+          }}>
+            {/* Title and Price */}
+            <div>
+              <h1 style={{ 
+                fontSize: isMobile ? '1.8rem' : '2.5rem',
+                margin: '0 0 0.5rem 0',
+                color: c.textDark,
+                fontWeight: '800',
+                letterSpacing: '-0.5px',
+                lineHeight: 1.2,
+                fontFamily: 'Georgia, serif'
+              }}>
+                {product.name}
+              </h1>
+              
+              {/* Rating */}
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '12px',
+                marginBottom: '1.5rem',
+                flexWrap: 'wrap'
+              }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 12px',
+                  background: c.background,
+                  borderRadius: '20px',
+                  border: `2px solid ${c.border}`
+                }}>
+                  <span style={{ fontSize: '1rem' }}>⭐</span>
+                  <span style={{ 
+                    fontWeight: '700',
+                    color: c.textDark,
+                    fontSize: '0.95rem'
+                  }}>
+                    {rating.toFixed(1)}
+                  </span>
+                </div>
+                {reviews > 0 && (
+                  <span style={{
+                    fontSize: '0.85rem',
+                    color: c.textLight,
+                    fontWeight: '600'
+                  }}>
+                    ({reviews} {reviews === 1 ? t('review') : t('reviews')})
+                  </span>
+                )}
+              </div>
+
+              {/* Price Display */}
               <div style={{
                 background: `linear-gradient(135deg, ${c.secondary}20, ${c.secondary}10)`,
-                padding: isMobile ? '8px 16px' : 'clamp(10px, 2.5vw, 14px) clamp(20px, 4vw, 28px)',
+                padding: '16px 20px',
                 borderRadius: '12px',
                 border: `2px solid ${c.secondary}40`,
                 boxShadow: theme === 'light'
                   ? '0 4px 16px rgba(212, 160, 23, 0.2)'
-                  : '0 4px 16px rgba(212, 160, 23, 0.4)'
+                  : '0 4px 16px rgba(212, 160, 23, 0.4)',
+                marginBottom: '1.5rem'
               }}>
                 <p style={{ 
+                  color: c.textLight,
+                  fontSize: '0.85rem',
+                  margin: '0 0 6px 0',
+                  fontWeight: '600'
+                }}>
+                  {t('price')}
+                </p>
+                <p style={{ 
                   color: c.secondary,
-                  fontSize: isMobile ? '1.6rem' : 'clamp(1.8rem, 6vw, 2.5rem)',
+                  fontSize: '2.2rem',
                   fontWeight: '800', 
-                  margin: 0,
-                  textShadow: theme === 'dark' ? '0 2px 8px rgba(212, 160, 23, 0.4)' : 'none'
+                  margin: 0
                 }}>
                   π {product.price.toFixed(2)}
                 </p>
               </div>
-              
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '8px', 
-                padding: isMobile ? '8px 14px' : 'clamp(8px, 2vw, 12px) clamp(16px, 3.5vw, 20px)',
-                background: c.background, 
-                borderRadius: '24px', 
-                border: `2px solid ${c.border}`,
-                boxShadow: '0 2px 12px rgba(0,0,0,0.08)'
-              }}>
-                <span style={{ 
-                  fontSize: isMobile ? '0.8rem' : 'clamp(0.9rem, 2.8vw, 1rem)',
-                  filter: 'drop-shadow(0 2px 4px rgba(255, 215, 0, 0.4))'
-                }}>
-                  ⭐⭐⭐⭐⭐
-                </span>
-                <span style={{ 
-                  fontSize: isMobile ? '0.8rem' : 'clamp(0.85rem, 2.5vw, 1rem)',
-                  color: c.textLight, 
-                  fontWeight: '700' 
-                }}>
-                  5.0
-                </span>
-              </div>
             </div>
 
-            {/* Stock Info Box */}
+            {/* Description */}
+            {product.description && (
+              <div style={{
+                background: c.card,
+                padding: '16px',
+                borderRadius: '12px',
+                border: `2px solid ${c.border}`
+              }}>
+                <p style={{ 
+                  color: c.textLight, 
+                  lineHeight: 1.8,
+                  fontSize: '0.95rem',
+                  margin: 0
+                }}>
+                  {product.description}
+                </p>
+              </div>
+            )}
+
+            {/* Flavors Selection */}
+            {product.flavors && product.flavors.length > 0 && (
+              <div>
+                <p style={{
+                  fontWeight: '700',
+                  color: c.textDark,
+                  margin: '0 0 12px 0',
+                  fontSize: '0.95rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <span>🍬</span>
+                  {t('selectFlavor')}
+                </p>
+                <div style={{ 
+                  display: 'flex', 
+                  flexWrap: 'wrap', 
+                  gap: '10px'
+                }}>
+                  {product.flavors.map((flavor, index) => (
+                    <button
+                      key={index}
+                      onClick={() => setSelectedFlavor(flavor)}
+                      style={{
+                        padding: '10px 16px',
+                        background: selectedFlavor === flavor
+                          ? `linear-gradient(135deg, ${c.secondary}, #B8860B)`
+                          : c.background,
+                        color: selectedFlavor === flavor ? '#FFFFFF' : c.textDark,
+                        border: selectedFlavor === flavor
+                          ? `2px solid ${c.secondary}`
+                          : `2px solid ${c.border}`,
+                        borderRadius: '20px',
+                        fontWeight: '700',
+                        fontSize: '0.9rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.3s ease',
+                        boxShadow: selectedFlavor === flavor
+                          ? `0 6px 20px rgba(212, 160, 23, 0.4)`
+                          : 'none'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (selectedFlavor !== flavor && windowWidth >= 768) {
+                          e.currentTarget.style.borderColor = c.secondary
+                          e.currentTarget.style.transform = 'translateY(-2px)'
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (selectedFlavor !== flavor && windowWidth >= 768) {
+                          e.currentTarget.style.borderColor = c.border
+                          e.currentTarget.style.transform = 'translateY(0)'
+                        }
+                      }}
+                    >
+                      {flavor}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Stock Status */}
             <div style={{
               background: isOutOfStock 
                 ? 'linear-gradient(135deg, #FEE2E2, #FECACA)'
                 : isLowStock
                   ? 'linear-gradient(135deg, #FEF3C7, #FDE68A)'
                   : 'linear-gradient(135deg, #D1FAE5, #A7F3D0)',
-              padding: isMobile ? '16px' : 'clamp(16px, 4vw, 20px)',
+              padding: '16px',
               borderRadius: '12px',
-              marginBottom: isMobile ? '16px' : 'clamp(20px, 4vw, 24px)',
-              border: `2px solid ${isOutOfStock ? '#EF4444' : isLowStock ? '#F59E0B' : '#10B981'}`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: '12px'
+              border: `2px solid ${isOutOfStock ? '#EF4444' : isLowStock ? '#F59E0B' : '#10B981'}`
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <span style={{ fontSize: isMobile ? '1.5rem' : '2rem' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                <span style={{ fontSize: '1.5rem' }}>
                   {isOutOfStock ? '❌' : isLowStock ? '⚡' : '✓'}
                 </span>
                 <div>
-                                   <p style={{
+                  <p style={{
                     margin: 0,
                     fontWeight: '800',
-                    fontSize: isMobile ? '1rem' : '1.1rem',
+                    fontSize: '1rem',
                     color: isOutOfStock ? '#991B1B' : isLowStock ? '#92400E' : '#065F46'
                   }}>
                     {isOutOfStock ? t('outOfStock') : isLowStock ? t('lowStockAlert') : t('availableInStock')}
                   </p>
-                                   <p style={{
+                  <p style={{
                     margin: '4px 0 0 0',
-                    fontSize: isMobile ? '0.9rem' : '0.95rem',
+                    fontSize: '0.9rem',
                     color: isOutOfStock ? '#B91C1C' : isLowStock ? '#B45309' : '#047857'
                   }}>
                     {isOutOfStock 
@@ -599,24 +656,41 @@ export default function ProductDetail() {
                   </p>
                 </div>
               </div>
-              
-              {/* Quantity Selector */}
-              {!isOutOfStock && (
+            </div>
+
+            {/* Quantity Selector */}
+            {!isOutOfStock && (
+              <div style={{
+                background: c.card,
+                padding: '16px',
+                borderRadius: '12px',
+                border: `2px solid ${c.border}`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '16px'
+              }}>
+                <span style={{
+                  fontWeight: '700',
+                  color: c.textDark,
+                  fontSize: '0.95rem'
+                }}>
+                  {t('quantity')}
+                </span>
                 <div style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '12px',
-                  background: '#FFFFFF',
+                  gap: '10px',
+                  background: c.background,
                   padding: '8px',
-                  borderRadius: '10px',
-                  border: `2px solid ${c.border}`
+                  borderRadius: '10px'
                 }}>
                   <button
                     onClick={() => setQuantity(Math.max(1, quantity - 1))}
                     disabled={quantity <= 1}
                     style={{
-                      width: '36px',
-                      height: '36px',
+                      width: '40px',
+                      height: '40px',
                       borderRadius: '8px',
                       border: 'none',
                       background: quantity <= 1 ? '#E5E7EB' : c.primary,
@@ -626,13 +700,14 @@ export default function ProductDetail() {
                       cursor: quantity <= 1 ? 'not-allowed' : 'pointer',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center'
+                      justifyContent: 'center',
+                      transition: 'all 0.2s ease'
                     }}
                   >
                     −
                   </button>
                   <span style={{
-                    fontSize: '1.1rem',
+                    fontSize: '1.2rem',
                     fontWeight: '800',
                     minWidth: '40px',
                     textAlign: 'center',
@@ -644,8 +719,8 @@ export default function ProductDetail() {
                     onClick={() => setQuantity(Math.min(stock, quantity + 1))}
                     disabled={quantity >= stock}
                     style={{
-                      width: '36px',
-                      height: '36px',
+                      width: '40px',
+                      height: '40px',
                       borderRadius: '8px',
                       border: 'none',
                       background: quantity >= stock ? '#E5E7EB' : c.primary,
@@ -655,147 +730,28 @@ export default function ProductDetail() {
                       cursor: quantity >= stock ? 'not-allowed' : 'pointer',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center'
+                      justifyContent: 'center',
+                      transition: 'all 0.2s ease'
                     }}
                   >
                     +
                   </button>
                 </div>
-              )}
-            </div>
-
-            {/* Pieces Per Box */}
-            <div style={{
-              background: c.background,
-              padding: isMobile ? '12px 14px' : 'clamp(12px, 3vw, 16px) clamp(16px, 4vw, 20px)',
-              borderRadius: '10px',
-              marginBottom: isMobile ? '16px' : 'clamp(20px, 4vw, 24px)',
-              border: `1px solid ${c.border}`
-            }}>
-              <p style={{ 
-                fontWeight: '700', 
-                color: c.textDark, 
-                margin: 0,
-                fontSize: isMobile ? '0.95rem' : 'clamp(1rem, 3.2vw, 1.15rem)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                flexWrap: 'wrap',
-                justifyContent: isMobile ? 'center' : 'flex-start'
-              }}>
-                <span style={{ fontSize: isMobile ? '1.3rem' : '1.5rem' }}>📦</span>
-                <strong>{t('piecesPerBox')}:</strong> 
-                               <span style={{ color: c.secondary, fontWeight: '800' }}>
-                  {product.piecesPerBox} {t('pieces')}
-                </span>
-              </p>
-            </div>
-            
-            {/* Flavors */}
-            <div style={{ marginBottom: isMobile ? '20px' : 'clamp(24px, 5vw, 32px)' }}>
-              <p style={{ 
-                fontWeight: '700', 
-                color: c.textDark, 
-                marginBottom: isMobile ? '10px' : 'clamp(12px, 3vw, 16px)',
-                fontSize: isMobile ? '0.95rem' : 'clamp(1rem, 3.2vw, 1.15rem)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                justifyContent: isMobile ? 'center' : 'flex-start'
-              }}>
-                <span style={{ fontSize: isMobile ? '1.3rem' : '1.5rem' }}>🍬</span>
-                <strong>{t('flavors')}:</strong>
-              </p>
-              <div style={{ 
-                display: 'flex', 
-                flexWrap: 'wrap', 
-                gap: isMobile ? '8px' : 'clamp(8px, 2vw, 12px)',
-                justifyContent: isMobile ? 'center' : 'flex-start'
-              }}>
-                {product.flavors.map((flavor, index) => (
-                  <span key={index} style={{
-                    background: `linear-gradient(135deg, ${c.background}, ${c.card})`,
-                    padding: isMobile ? '10px 16px' : 'clamp(10px, 2.5vw, 14px) clamp(16px, 4vw, 22px)',
-                    borderRadius: '24px',
-                    fontSize: isMobile ? '0.85rem' : 'clamp(0.9rem, 2.8vw, 1.05rem)',
-                    color: c.textDark,
-                    border: `2px solid ${c.border}`,
-                    fontWeight: '600',
-                    transition: 'all 0.3s ease',
-                    cursor: 'default',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-                    animation: `fadeInUp 0.5s ease-out ${index * 0.1}s backwards`
-                  }}
-                  onMouseEnter={(e) => {
-                    if (windowWidth >= 768) {
-                      e.currentTarget.style.background = `linear-gradient(135deg, ${c.secondary}, #D4A017)`
-                      e.currentTarget.style.color = '#FFFFFF'
-                      e.currentTarget.style.borderColor = c.secondary
-                      e.currentTarget.style.transform = 'translateY(-4px) scale(1.05)'
-                      e.currentTarget.style.boxShadow = '0 6px 20px rgba(212, 160, 23, 0.4)'
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (windowWidth >= 768) {
-                      e.currentTarget.style.background = `linear-gradient(135deg, ${c.background}, ${c.card})`
-                      e.currentTarget.style.color = c.textDark
-                      e.currentTarget.style.borderColor = c.border
-                      e.currentTarget.style.transform = 'translateY(0) scale(1)'
-                      e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.06)'
-                    }
-                  }}
-                  >
-                    {flavor}
-                  </span>
-                ))}
               </div>
-            </div>
-
-            {/* Description */}
-            <div style={{ marginBottom: isMobile ? '24px' : 'clamp(32px, 6vw, 48px)' }}>
-              <p style={{ 
-                fontWeight: '700', 
-                color: c.textDark, 
-                marginBottom: isMobile ? '10px' : 'clamp(12px, 3vw, 16px)',
-                fontSize: isMobile ? '0.95rem' : 'clamp(1rem, 3.2vw, 1.15rem)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                justifyContent: isMobile ? 'center' : 'flex-start'
-              }}>
-                <span style={{ fontSize: isMobile ? '1.3rem' : '1.5rem' }}>📝</span>
-                <strong>{t('description')}:</strong>
-              </p>
-              <p style={{ 
-                color: c.textLight, 
-                lineHeight: 1.8, 
-                fontSize: isMobile ? '0.9rem' : 'clamp(0.95rem, 3.2vw, 1.1rem)',
-                background: c.background,
-                padding: isMobile ? '14px' : 'clamp(16px, 4vw, 20px)',
-                borderRadius: '10px',
-                border: `1px solid ${c.border}`,
-                margin: 0,
-                textAlign: isMobile ? 'center' : 'left'
-              }}>
-                {product.description}
-              </p>
-            </div>
+            )}
 
             {/* Action Buttons */}
             <div style={{ 
               display: 'flex', 
-              gap: isMobile ? '10px' : 'clamp(12px, 3vw, 16px)',
-              flexDirection: isMobile ? 'column' : 'row',
-              flexWrap: 'wrap' 
+              gap: '12px',
+              flexDirection: isMobile ? 'column' : 'row'
             }}>
               <button
                 onClick={handleAddToCart}
                 disabled={isOutOfStock || !canAddToCart}
                 style={{
-                  flex: isMobile ? 'none' : 1,
-                  width: isMobile ? '100%' : 'auto',
-                  minWidth: isMobile ? 'auto' : 'clamp(180px, 45vw, 220px)',
-                  padding: isMobile ? '14px 20px' : 'clamp(14px, 3.5vw, 20px) clamp(24px, 5vw, 32px)',
+                  flex: 1,
+                  padding: '14px 20px',
                   background: isOutOfStock 
                     ? '#9CA3AF'
                     : !canAddToCart
@@ -803,10 +759,10 @@ export default function ProductDetail() {
                       : `linear-gradient(135deg, ${c.success} 0%, #7CB342 100%)`,
                   color: 'white',
                   border: 'none',
-                  borderRadius: isMobile ? '10px' : 'clamp(8px, 2vw, 12px)',
-                  fontWeight: '700',
+                  borderRadius: '12px',
+                  fontWeight: '800',
                   cursor: (isOutOfStock || !canAddToCart) ? 'not-allowed' : 'pointer',
-                  fontSize: isMobile ? '1rem' : 'clamp(1rem, 3.5vw, 1.2rem)',
+                  fontSize: isMobile ? '0.95rem' : '1.05rem',
                   transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                   boxShadow: isOutOfStock 
                     ? 'none'
@@ -819,31 +775,23 @@ export default function ProductDetail() {
                 }}
                 onMouseEnter={(e) => {
                   if (windowWidth >= 768 && !isOutOfStock && canAddToCart) {
-                    e.currentTarget.style.transform = 'translateY(-4px) scale(1.02)'
+                    e.currentTarget.style.transform = 'translateY(-4px)'
                     e.currentTarget.style.boxShadow = '0 10px 30px rgba(139, 195, 74, 0.5)'
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (windowWidth >= 768) {
-                    e.currentTarget.style.transform = 'translateY(0) scale(1)'
+                    e.currentTarget.style.transform = 'translateY(0)'
                     e.currentTarget.style.boxShadow = isOutOfStock 
                       ? 'none'
                       : '0 6px 20px rgba(139, 195, 74, 0.4)'
                   }
                 }}
-                onTouchStart={(e) => {
-                  if (!isOutOfStock && canAddToCart) {
-                    e.currentTarget.style.transform = 'scale(0.96)'
-                  }
-                }}
-                onTouchEnd={(e) => {
-                  e.currentTarget.style.transform = 'scale(1)'
-                }}
               >
                 <span style={{ fontSize: '1.3rem' }}>
                   {isOutOfStock ? '🚫' : !canAddToCart ? '⚠️' : '✓'}
                 </span>
-                                {isOutOfStock 
+                {isOutOfStock 
                   ? t('outOfStock') 
                   : !canAddToCart 
                     ? t('onlyAvailable', { count: stock })
@@ -853,18 +801,16 @@ export default function ProductDetail() {
               <button
                 onClick={() => navigate('/cart')}
                 style={{
-                  width: isMobile ? '100%' : 'auto',
-                  padding: isMobile ? '14px 20px' : 'clamp(14px, 3.5vw, 20px) clamp(24px, 5vw, 32px)',
+                  flex: 1,
+                  padding: '14px 20px',
                   backgroundColor: 'transparent',
                   color: c.primary,
                   border: `2px solid ${c.primary}`,
-                  borderRadius: isMobile ? '10px' : 'clamp(8px, 2vw, 12px)',
-                  fontWeight: '700',
+                  borderRadius: '12px',
+                  fontWeight: '800',
                   cursor: 'pointer',
-                  fontSize: isMobile ? '1rem' : 'clamp(1rem, 3.5vw, 1.2rem)',
+                  fontSize: isMobile ? '0.95rem' : '1.05rem',
                   transition: 'all 0.3s ease',
-                  minWidth: isMobile ? 'auto' : 'clamp(140px, 35vw, 170px)',
-                  whiteSpace: 'nowrap',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -873,7 +819,7 @@ export default function ProductDetail() {
                 onMouseEnter={(e) => {
                   if (windowWidth >= 768) {
                     e.currentTarget.style.backgroundColor = c.primary
-                    e.currentTarget.style.color = theme === 'light' ? '#FFFFFF' : c.textDark
+                    e.currentTarget.style.color = '#FFFFFF'
                     e.currentTarget.style.transform = 'translateY(-4px)'
                   }
                 }}
@@ -884,15 +830,35 @@ export default function ProductDetail() {
                     e.currentTarget.style.transform = 'translateY(0)'
                   }
                 }}
-                onTouchStart={(e) => {
-                  e.currentTarget.style.transform = 'scale(0.95)'
-                }}
-                onTouchEnd={(e) => {
-                  e.currentTarget.style.transform = 'scale(1)'
-                }}
               >
                 🛒 {t('goToCart')}
               </button>
+            </div>
+
+            {/* Additional Info */}
+            <div style={{
+              background: c.background,
+              padding: '16px',
+              borderRadius: '12px',
+              border: `1px solid ${c.border}`,
+              display: 'grid',
+              gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr',
+              gap: '12px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '1.3rem' }}>🚚</span>
+                <div style={{ fontSize: '0.8rem' }}>
+                  <p style={{ margin: 0, fontWeight: '700', color: c.textDark }}>Free Shipping</p>
+                  <p style={{ margin: '2px 0 0 0', color: c.textLight }}>Worldwide</p>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '1.3rem' }}>🔒</span>
+                <div style={{ fontSize: '0.8rem' }}>
+                  <p style={{ margin: 0, fontWeight: '700', color: c.textDark }}>Secure Payment</p>
+                  <p style={{ margin: '2px 0 0 0', color: c.textLight }}>Pi Network</p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -903,6 +869,17 @@ export default function ProductDetail() {
         @keyframes fadeIn {
           from { opacity: 0; }
           to { opacity: 1; }
+        }
+
+        @keyframes fadeInDown {
+          from {
+            opacity: 0;
+            transform: translateY(-20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
         }
 
         @keyframes fadeInUp {
@@ -922,7 +899,7 @@ export default function ProductDetail() {
         }
 
         @keyframes pulse {
-          0%, 100% { opacity: 0.5; }
+          0%, 100% { opacity: 0.8; }
           50% { opacity: 1; }
         }
 
@@ -943,13 +920,6 @@ export default function ProductDetail() {
           to {
             opacity: 1;
             transform: translateX(-50%) translateY(0);
-          }
-        }
-
-        @keyframes slideOut {
-          to {
-            opacity: 0;
-            transform: translateX(-50%) translateY(-30px);
           }
         }
 
