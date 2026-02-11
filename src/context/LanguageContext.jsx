@@ -252,7 +252,7 @@ const translations = {
 const LanguageContext = createContext()
 
 export function LanguageProvider({ children }) {
-  const [lang, setLang] = useState('ar') // Default: English
+  const [lang, setLang] = useState('en') // Default: English
 
   // Load saved language
   useEffect(() => {
