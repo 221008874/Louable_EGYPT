@@ -460,6 +460,7 @@ export default function Home() {
             </h2>
 
             {/* Subtitle */}
+                        {/* Subtitle */}
             <p
               style={{
                 fontSize: isMobile ? 'clamp(0.95rem, 4vw, 1.3rem)' : 'clamp(1.1rem, 3vw, 1.7rem)',
@@ -473,7 +474,7 @@ export default function Home() {
                 maxWidth: '90%'
               }}
             >
-              Discover our premium chocolate collection ✨
+              {t('discoverPremium')}
             </p>
           </div>
         </div>
