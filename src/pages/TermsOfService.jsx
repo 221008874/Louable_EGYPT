@@ -53,46 +53,46 @@ export default function TermsOfService() {
           ← {t('back')}
         </button>
 
-        <h1 style={{ 
+               <h1 style={{ 
           color: c.heading, 
           marginBottom: '1.5rem',
           fontSize: '2rem'
         }}>
-          Terms of Service
+          {t('termsOfServiceTitle')}
         </h1>
 
-        <div style={{ lineHeight: 1.6, fontSize: '1rem' }}>
-          <p><strong>Last Updated:</strong> February 3, 2026</p>
+               <div style={{ lineHeight: 1.6, fontSize: '1rem' }}>
+          <p><strong>{t('lastUpdated')}:</strong> February 3, 2026</p>
           
-          <h2 style={{ color: c.heading, marginTop: '1.5rem' }}>1. Introduction</h2>
-          <p>Welcome to Louable! These terms govern your use of our chocolate e-commerce platform ("App") accessible through the Pi Browser. By using our App, you agree to these Terms of Service.</p>
+          <h2 style={{ color: c.heading, marginTop: '1.5rem' }}>1. {t('termsIntro').split('.')[0]}</h2>
+          <p>{t('termsIntro')}</p>
           
-          <h2 style={{ color: c.heading, marginTop: '1.5rem' }}>2. Acceptance of Terms</h2>
-          <p>By accessing or using our App, you confirm that you are at least 18 years old and agree to be bound by these terms.</p>
+          <h2 style={{ color: c.heading, marginTop: '1.5rem' }}>2. {t('acceptanceOfTerms').replace('2. ', '')}</h2>
+          <p>{t('acceptanceText')}</p>
           
-          <h2 style={{ color: c.heading, marginTop: '1.5rem' }}>3. Use of Pi Network</h2>
-          <p>Our App integrates with the Pi Network Testnet for development purposes. All transactions during this phase use Test Pi, which has no monetary value. Real Pi transactions will only be enabled after proper Mainnet approval.</p>
+          <h2 style={{ color: c.heading, marginTop: '1.5rem' }}>3. {t('piNetworkUse').replace('3. ', '')}</h2>
+          <p>{t('piNetworkText')}</p>
           
-          <h2 style={{ color: c.heading, marginTop: '1.5rem' }}>4. Product Information</h2>
-          <p>We strive for accuracy in product descriptions, pricing, and availability. However, we reserve the right to correct any errors and cancel orders if necessary.</p>
+          <h2 style={{ color: c.heading, marginTop: '1.5rem' }}>4. {t('productInfo').replace('4. ', '')}</h2>
+          <p>{t('productInfoText')}</p>
           
-          <h2 style={{ color: c.heading, marginTop: '1.5rem' }}>5. Payment Processing</h2>
-          <p>All payments are processed through the Pi Network's secure payment system. You authorize us to process payments for your orders through your Pi Wallet.</p>
+          <h2 style={{ color: c.heading, marginTop: '1.5rem' }}>5. {t('paymentProcessing').replace('5. ', '')}</h2>
+          <p>{t('paymentText')}</p>
           
-          <h2 style={{ color: c.heading, marginTop: '1.5rem' }}>6. User Responsibilities</h2>
-          <p>You are responsible for maintaining the confidentiality of your Pi account credentials and for all activities that occur under your account.</p>
+          <h2 style={{ color: c.heading, marginTop: '1.5rem' }}>6. {t('userResponsibilities').replace('6. ', '')}</h2>
+          <p>{t('userRespText')}</p>
           
-          <h2 style={{ color: c.heading, marginTop: '1.5rem' }}>7. Limitation of Liability</h2>
-          <p>Our App is provided "as is" without warranties of any kind. We are not liable for any indirect, incidental, or consequential damages.</p>
+          <h2 style={{ color: c.heading, marginTop: '1.5rem' }}>7. {t('limitationOfLiability').replace('7. ', '')}</h2>
+          <p>{t('liabilityText')}</p>
           
-          <h2 style={{ color: c.heading, marginTop: '1.5rem' }}>8. Changes to Terms</h2>
-          <p>We may modify these terms at any time. Continued use of the App constitutes acceptance of the modified terms.</p>
+          <h2 style={{ color: c.heading, marginTop: '1.5rem' }}>8. {t('changesToTerms').replace('8. ', '')}</h2>
+          <p>{t('changesText')}</p>
           
-          <h2 style={{ color: c.heading, marginTop: '1.5rem' }}>9. Contact Information</h2>
-          <p>For questions about these terms, please contact us at: ahmedabdelmonem6815160@gmail.com</p>
+          <h2 style={{ color: c.heading, marginTop: '1.5rem' }}>9. {t('contactUs')}</h2>
+          <p>{t('contactPrivacyText').replace('louablefactory@gmail.com', 'ahmedabdelmonem6815160@gmail.com')}</p>
           
-          <h2 style={{ color: c.heading, marginTop: '1.5rem' }}>10. Governing Law</h2>
-          <p>These terms are governed by the laws of Egypt.</p>
+          <h2 style={{ color: c.heading, marginTop: '1.5rem' }}>10. {t('governingLaw').replace('9. ', '')}</h2>
+          <p>{t('governingText')}</p>
         </div>
       </div>
     </div>
