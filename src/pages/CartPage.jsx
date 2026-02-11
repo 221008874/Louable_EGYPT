@@ -639,6 +639,18 @@ export default function CartPage() {
                     opacity: isOutOfStock ? 0.85 : 1
                   }}
                 >
+                  <button onClick={() => navigate('/home')} style={{
+          padding: '12px 32px',
+          background: c.success,
+          color: '#FFF',
+          border: 'none',
+          borderRadius: '10px',
+          fontWeight: '700',
+          fontSize: '1rem',
+          cursor: 'pointer'
+        }}>
+          🛍️ {t('continueShopping')}
+        </button>
                   {/* Product Image */}
                   <div style={{
                     width: isSmallMobile ? '100%' : (isMobile ? '80px' : '100px'),
@@ -919,18 +931,7 @@ export default function CartPage() {
                 <span>{t('subtotal')} ({totalItems} {totalItems === 1 ? t('item') : t('items')})</span>
                 <span>π {totalPrice.toFixed(2)}</span>
 
-                <button onClick={() => navigate('/home')} style={{
-          padding: '12px 32px',
-          background: c.success,
-          color: '#FFF',
-          border: 'none',
-          borderRadius: '10px',
-          fontWeight: '700',
-          fontSize: '1rem',
-          cursor: 'pointer'
-        }}>
-          🛍️ {t('continueShopping')}
-        </button>
+
               </div>
               <div style={{ 
                 display: 'flex',
