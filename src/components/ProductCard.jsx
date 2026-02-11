@@ -3,6 +3,7 @@ import { useLanguage } from '../context/LanguageContext'
 import { useTheme } from '../context/ThemeContext'
 import { useCart } from '../context/CartContext'
 import { Link } from 'react-router-dom'
+import { useState } from 'react'
 
 // Safe translation helper
 const safeT = (t, key, fallback = '') => {
@@ -17,6 +18,8 @@ const safeT = (t, key, fallback = '') => {
 }
 
 export default function ProductCard({ product }) {
+  const [isHovering, setIsHovering] = useState(false)
+  
   // Defensive hooks - wrap in try-catch to prevent crashes
   let t = (key) => key
   let lang = 'en'
@@ -56,7 +59,8 @@ export default function ProductCard({ product }) {
       success: '#8BC34A',
       danger: '#EF4444',
       warning: '#F59E0B',
-      border: '#E8DDD4'
+      border: '#E8DDD4',
+      overlay: 'rgba(46, 27, 27, 0.95)'
     },
     dark: {
       primary: '#2E1B1B',
@@ -68,7 +72,8 @@ export default function ProductCard({ product }) {
       success: '#8BC34A',
       danger: '#EF4444',
       warning: '#F59E0B',
-      border: '#3E2723'
+      border: '#3E2723',
+      overlay: 'rgba(0, 0, 0, 0.8)'
     }
   }
 
@@ -78,6 +83,8 @@ export default function ProductCard({ product }) {
   const stock = product?.stock || 0
   const isOutOfStock = stock <= 0
   const isLowStock = stock > 0 && stock < 10
+  const rating = product?.rating || 0
+  const reviews = product?.reviews || 0
 
   const handleAddToCart = (e) => {
     e.preventDefault()
@@ -124,6 +131,7 @@ export default function ProductCard({ product }) {
   const inStockText = safeT(t, 'inStock', 'In Stock: {count}').replace('{count}', stock)
   const addToCartText = safeT(t, 'addToCart', 'Add to Cart')
   const piecesText = safeT(t, 'pieces', 'pieces')
+  const addText = safeT(t, 'add', 'Add')
 
   return (
     <Link
@@ -131,7 +139,8 @@ export default function ProductCard({ product }) {
       style={{
         textDecoration: 'none',
         color: 'inherit',
-        display: 'block'
+        display: 'block',
+        height: '100%'
       }}
     >
       <div
@@ -147,16 +156,21 @@ export default function ProductCard({ product }) {
           position: 'relative',
           height: '100%',
           display: 'flex',
-          flexDirection: 'column'
+          flexDirection: 'column',
+          cursor: isOutOfStock ? 'not-allowed' : 'pointer'
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.transform = 'translateY(-8px) scale(1.02)'
-          e.currentTarget.style.boxShadow = theme === 'light'
-            ? '0 16px 48px rgba(62, 39, 35, 0.16)'
-            : '0 16px 48px rgba(0, 0, 0, 0.5)'
-          e.currentTarget.style.borderColor = c.secondary
+          setIsHovering(true)
+          if (!isOutOfStock) {
+            e.currentTarget.style.transform = 'translateY(-8px) scale(1.02)'
+            e.currentTarget.style.boxShadow = theme === 'light'
+              ? '0 16px 48px rgba(62, 39, 35, 0.16)'
+              : '0 16px 48px rgba(0, 0, 0, 0.5)'
+            e.currentTarget.style.borderColor = c.secondary
+          }
         }}
         onMouseLeave={(e) => {
+          setIsHovering(false)
           e.currentTarget.style.transform = 'translateY(0) scale(1)'
           e.currentTarget.style.boxShadow = theme === 'light'
             ? '0 8px 24px rgba(62, 39, 35, 0.08)'
@@ -170,7 +184,8 @@ export default function ProductCard({ product }) {
           top: '12px',
           right: lang === 'ar' ? 'auto' : '12px',
           left: lang === 'ar' ? '12px' : 'auto',
-          zIndex: 10
+          zIndex: 20,
+          animation: isLowStock ? 'pulse 2s ease-in-out infinite' : 'none'
         }}>
           {isOutOfStock ? (
             <span style={{
@@ -182,7 +197,8 @@ export default function ProductCard({ product }) {
               fontWeight: '800',
               textTransform: 'uppercase',
               letterSpacing: '0.5px',
-              boxShadow: '0 4px 12px rgba(239, 68, 68, 0.4)'
+              boxShadow: '0 4px 12px rgba(239, 68, 68, 0.4)',
+              display: 'inline-block'
             }}>
               {outOfStockText}
             </span>
@@ -197,7 +213,7 @@ export default function ProductCard({ product }) {
               textTransform: 'uppercase',
               letterSpacing: '0.5px',
               boxShadow: '0 4px 12px rgba(245, 158, 11, 0.4)',
-              animation: 'pulse 2s ease-in-out infinite'
+              display: 'inline-block'
             }}>
               {onlyLeftText}
             </span>
@@ -209,19 +225,21 @@ export default function ProductCard({ product }) {
               borderRadius: '20px',
               fontSize: '0.75rem',
               fontWeight: '700',
-              boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)'
+              boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
+              display: 'inline-block'
             }}>
               {inStockText}
             </span>
           )}
         </div>
 
-        {/* Product Image */}
+        {/* Product Image Container */}
         <div style={{
           position: 'relative',
           height: '220px',
           overflow: 'hidden',
-          background: c.background
+          background: c.background,
+          borderBottom: `1px solid ${c.border}`
         }}>
           {product.imageUrl ? (
             <img
@@ -232,15 +250,8 @@ export default function ProductCard({ product }) {
                 height: '100%',
                 objectFit: 'cover',
                 transition: 'transform 0.5s ease',
-                filter: isOutOfStock ? 'grayscale(0.6)' : 'none'
-              }}
-              onMouseEnter={(e) => {
-                if (!isOutOfStock) {
-                  e.currentTarget.style.transform = 'scale(1.1)'
-                }
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'scale(1)'
+                filter: isOutOfStock ? 'grayscale(0.6)' : 'none',
+                transform: isHovering && !isOutOfStock ? 'scale(1.1)' : 'scale(1)'
               }}
             />
           ) : (
@@ -265,10 +276,11 @@ export default function ProductCard({ product }) {
             <div style={{
               position: 'absolute',
               inset: 0,
-              background: 'rgba(0, 0, 0, 0.5)',
+              background: c.overlay,
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center'
+              justifyContent: 'center',
+              transition: 'all 0.3s ease'
             }}>
               <span style={{
                 background: '#EF4444',
@@ -277,60 +289,184 @@ export default function ProductCard({ product }) {
                 borderRadius: '8px',
                 fontWeight: '800',
                 fontSize: '1rem',
-                transform: 'rotate(-10deg)'
+                transform: 'rotate(-10deg)',
+                boxShadow: '0 8px 16px rgba(0, 0, 0, 0.2)'
               }}>
                 {outOfStockText}
               </span>
+            </div>
+          )}
+
+          {/* Quick Add Button - Shows on Hover */}
+          {!isOutOfStock && (
+            <div style={{
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              padding: '12px',
+              background: `linear-gradient(to top, ${c.overlay}, transparent)`,
+              display: 'flex',
+              alignItems: 'flex-end',
+              justifyContent: 'center',
+              opacity: isHovering ? 1 : 0,
+              transition: 'opacity 0.3s ease',
+              pointerEvents: isHovering ? 'auto' : 'none'
+            }}>
+              <button
+                onClick={handleAddToCart}
+                style={{
+                  background: `linear-gradient(135deg, ${c.secondary} 0%, #B8860B 100%)`,
+                  color: '#FFF',
+                  border: 'none',
+                  padding: '10px 24px',
+                  borderRadius: '8px',
+                  fontWeight: '700',
+                  fontSize: '0.9rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(212, 160, 23, 0.3)',
+                  transition: 'all 0.3s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.transform = 'scale(1.05)'
+                  e.target.style.boxShadow = '0 6px 16px rgba(212, 160, 23, 0.5)'
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.transform = 'scale(1)'
+                  e.target.style.boxShadow = '0 4px 12px rgba(212, 160, 23, 0.3)'
+                }}
+              >
+                <span>🛒</span>
+                {addText}
+              </button>
             </div>
           )}
         </div>
 
         {/* Product Info */}
         <div style={{
-          padding: '20px',
+          padding: '16px',
           flex: 1,
           display: 'flex',
           flexDirection: 'column',
-          gap: '12px'
+          gap: '10px'
         }}>
+          {/* Product Name */}
           <h3 style={{
-            fontSize: '1.15rem',
+            fontSize: '1.1rem',
             fontWeight: '700',
             color: isOutOfStock ? c.textLight : c.textDark,
             margin: 0,
             lineHeight: 1.3,
-            textDecoration: isOutOfStock ? 'line-through' : 'none'
+            textDecoration: isOutOfStock ? 'line-through' : 'none',
+            transition: 'color 0.3s ease'
           }}>
             {product.name}
           </h3>
 
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginTop: 'auto'
-          }}>
-            <span style={{
-              color: c.secondary,
-              fontSize: '1.3rem',
-              fontWeight: '800'
+          {/* Rating Section - New Feature */}
+          {rating > 0 && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '0.85rem'
             }}>
-              π {product.price?.toFixed(2)}
-            </span>
-            
-            
-          </div>
+              <span style={{ color: c.secondary, fontWeight: '700' }}>⭐ {rating.toFixed(1)}</span>
+              {reviews > 0 && (
+                <span style={{ color: c.textLight }}>({reviews} {reviews === 1 ? safeT(t, 'review', 'review') : safeT(t, 'reviews', 'reviews')})</span>
+              )}
+            </div>
+          )}
 
-          {/* Pieces per box info */}
+          {/* Description - New Feature */}
+          {product.description && (
+            <p style={{
+              fontSize: '0.8rem',
+              color: c.textLight,
+              margin: '4px 0',
+              lineHeight: 1.4,
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden'
+            }}>
+              {product.description}
+            </p>
+          )}
+
+          {/* Flavors/Variants - Enhanced */}
+          {product.flavors && product.flavors.length > 0 && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '0.75rem',
+              color: c.textLight,
+              flexWrap: 'wrap'
+            }}>
+              <span>🍬</span>
+              {product.flavors.slice(0, 2).map((flavor, idx) => (
+                <span key={idx} style={{
+                  background: c.background,
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  color: c.textDark,
+                  fontWeight: '600'
+                }}>
+                  {flavor}
+                </span>
+              ))}
+              {product.flavors.length > 2 && (
+                <span style={{ color: c.textLight, fontWeight: '600' }}>+{product.flavors.length - 2}</span>
+              )}
+            </div>
+          )}
+
+          {/* Price & Details Section */}
           <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            fontSize: '0.85rem',
-            color: c.textLight
+            marginTop: 'auto',
+            borderTop: `1px solid ${c.border}`,
+            paddingTop: '10px'
           }}>
-            <span>📦</span>
-            <span>{product.piecesPerBox} {piecesText}</span>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '8px'
+            }}>
+              <span style={{
+                color: c.secondary,
+                fontSize: '1.4rem',
+                fontWeight: '800'
+              }}>
+                π {product.price?.toFixed(2)}
+              </span>
+              {product.originalPrice && product.originalPrice > product.price && (
+                <span style={{
+                  color: c.textLight,
+                  fontSize: '0.8rem',
+                  textDecoration: 'line-through'
+                }}>
+                  π {product.originalPrice.toFixed(2)}
+                </span>
+              )}
+            </div>
+
+            {/* Pieces per box info */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '0.8rem',
+              color: c.textLight
+            }}>
+              <span>📦</span>
+              <span>{product.piecesPerBox} {piecesText}</span>
+            </div>
           </div>
         </div>
       </div>
