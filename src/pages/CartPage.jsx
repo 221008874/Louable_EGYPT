@@ -1,4 +1,4 @@
-// src/pages/CartPage.jsx - ENHANCED UI/UX
+// src/pages/CartPage.jsx - FIXED onBlur ERRORS
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCart } from '../context/CartContext'
@@ -29,8 +29,6 @@ export default function CartPage() {
   const [appliedCoupon, setAppliedCoupon] = useState(null)
   const [couponInput, setCouponInput] = useState('')
   const [expandedItem, setExpandedItem] = useState(null)
-  const [scrolled, setScrolled] = useState(false)
-  const [selectedTab, setSelectedTab] = useState('items')
   
   // Delivery info form state
   const [deliveryFormData, setDeliveryFormData] = useState({
@@ -44,6 +42,7 @@ export default function CartPage() {
   const [mapCenter, setMapCenter] = useState(null);
   const [isGeolocationSupported, setIsGeolocationSupported] = useState(true);
   const [deliveryFormErrors, setDeliveryFormErrors] = useState({});
+  const [deliveryTouchedFields, setDeliveryTouchedFields] = useState({});
   const [isDeliveryInfoValid, setIsDeliveryInfoValid] = useState(!!deliveryInfo);
   
   // State for enhanced product display and stock validation
@@ -60,12 +59,6 @@ export default function CartPage() {
     const handleResize = () => setWindowWidth(window.innerWidth)
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
-  }, [])
-
-  useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 50)
-    window.addEventListener('scroll', handleScroll)
-    return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
   // Get user's current location on mount
@@ -180,6 +173,11 @@ export default function CartPage() {
   const handleDeliveryInputChange = (e) => {
     const { name, value } = e.target;
     setDeliveryFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleDeliveryFieldBlur = (fieldName) => {
+    setDeliveryTouchedFields(prev => ({ ...prev, [fieldName]: true }));
+    validateDeliveryForm();
   };
 
   const handleSaveDeliveryInfo = (e) => {
@@ -373,133 +371,202 @@ export default function CartPage() {
     )
   }
 
-  // Delivery Info Form Component
+  // Delivery Info Form Component - FIXED WITH STABLE INPUTS
   const DeliveryInfoForm = () => (
-    <div style={{ 
-      background: c.card,
-      padding: '2.5rem',
-      borderRadius: '20px',
-      border: `2px solid ${c.border}`,
-      marginBottom: '2rem',
-      boxShadow: `0 8px 24px ${c.overlay}`
-    }}>
-      <h3 style={{ 
-        marginBottom: '2rem', 
-        color: c.textDark,
-        fontWeight: '800',
-        fontSize: '1.3rem',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '10px'
+    <form onSubmit={handleSaveDeliveryInfo}>
+      <div style={{ 
+        background: c.card,
+        padding: isMobile ? '1.5rem' : '2.5rem',
+        borderRadius: '20px',
+        border: `2px solid ${c.border}`,
+        marginBottom: '2rem',
+        boxShadow: `0 8px 24px ${c.overlay}`
       }}>
-        <span style={{ fontSize: '1.5rem' }}>📍</span>
-        {t('deliveryInformation')}
-      </h3>
-      
-      <form onSubmit={handleSaveDeliveryInfo}>
-        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
+        <h3 style={{ 
+          marginBottom: '2rem', 
+          color: c.textDark,
+          fontWeight: '800',
+          fontSize: isMobile ? '1.2rem' : '1.3rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px'
+        }}>
+          <span style={{ fontSize: '1.5rem' }}>📍</span>
+          {t('deliveryInformation')}
+        </h3>
+        
+        {/* Name & Age - Side by side on desktop */}
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', 
+          gap: isMobile ? '1.5rem' : '2rem',
+          marginBottom: '2rem'
+        }}>
           {/* Name */}
           <div>
-            <label style={{ display: 'block', marginBottom: '0.75rem', fontWeight: '700', fontSize: '0.95rem', color: c.textDark }}>
-              {t('fullName')} *
+            <label style={{ 
+              display: 'block', 
+              marginBottom: '0.75rem', 
+              fontWeight: '700', 
+              fontSize: '0.95rem', 
+              color: c.textDark,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px'
+            }}>
+              {t('fullName')} <span style={{ color: c.danger }}>*</span>
             </label>
             <input
               type="text"
               name="name"
               value={deliveryFormData.name}
               onChange={handleDeliveryInputChange}
+              onBlur={() => handleDeliveryFieldBlur('name')}
               placeholder={t('enterFullName')}
               style={{
                 width: '100%',
                 padding: '12px 16px',
-                border: `2px solid ${deliveryFormErrors.name ? c.danger : c.border}`,
+                border: `2px solid ${deliveryTouchedFields.name && deliveryFormErrors.name ? c.danger : c.border}`,
                 borderRadius: '12px',
                 fontSize: '1rem',
                 background: c.surface,
                 color: c.textDark,
                 transition: 'all 0.3s ease',
-                boxShadow: deliveryFormErrors.name ? `0 0 0 4px ${c.overlay}` : 'none'
+                boxShadow: deliveryTouchedFields.name && deliveryFormErrors.name ? `0 0 0 4px ${c.overlay}` : 'none',
+                fontFamily: 'inherit'
               }}
-              onFocus={(e) => e.target.style.borderColor = c.secondary}
-              onBlur={(e) => e.target.style.borderColor = deliveryFormErrors.name ? c.danger : c.border}
+              onFocus={(e) => {
+                if (!deliveryFormErrors.name) {
+                  e.target.style.borderColor = c.secondary
+                }
+              }}
             />
-            {deliveryFormErrors.name && <span style={{ color: c.danger, fontSize: '0.8rem', marginTop: '6px', display: 'block', fontWeight: '600' }}>✕ {deliveryFormErrors.name}</span>}
+            {deliveryTouchedFields.name && deliveryFormErrors.name && (
+              <div style={{ color: c.danger, fontSize: '0.8rem', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600' }}>
+                <span>✕</span>
+                {deliveryFormErrors.name}
+              </div>
+            )}
           </div>
 
           {/* Age */}
           <div>
-            <label style={{ display: 'block', marginBottom: '0.75rem', fontWeight: '700', fontSize: '0.95rem', color: c.textDark }}>
-              {t('age')} *
+            <label style={{ 
+              display: 'block', 
+              marginBottom: '0.75rem', 
+              fontWeight: '700', 
+              fontSize: '0.95rem', 
+              color: c.textDark,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px'
+            }}>
+              {t('age')} <span style={{ color: c.danger }}>*</span>
             </label>
             <input
               type="number"
               name="age"
               value={deliveryFormData.age}
               onChange={handleDeliveryInputChange}
+              onBlur={() => handleDeliveryFieldBlur('age')}
               min="13"
               max="120"
               placeholder={t('enterAge')}
               style={{
                 width: '100%',
                 padding: '12px 16px',
-                border: `2px solid ${deliveryFormErrors.age ? c.danger : c.border}`,
+                border: `2px solid ${deliveryTouchedFields.age && deliveryFormErrors.age ? c.danger : c.border}`,
                 borderRadius: '12px',
                 fontSize: '1rem',
                 background: c.surface,
                 color: c.textDark,
                 transition: 'all 0.3s ease',
-                boxShadow: deliveryFormErrors.age ? `0 0 0 4px ${c.overlay}` : 'none'
+                boxShadow: deliveryTouchedFields.age && deliveryFormErrors.age ? `0 0 0 4px ${c.overlay}` : 'none',
+                fontFamily: 'inherit'
               }}
-              onFocus={(e) => e.target.style.borderColor = c.secondary}
-              onBlur={(e) => e.target.style.borderColor = deliveryFormErrors.age ? c.danger : c.border}
+              onFocus={(e) => {
+                if (!deliveryFormErrors.age) {
+                  e.target.style.borderColor = c.secondary
+                }
+              }}
             />
-            {deliveryFormErrors.age && <span style={{ color: c.danger, fontSize: '0.8rem', marginTop: '6px', display: 'block', fontWeight: '600' }}>✕ {deliveryFormErrors.age}</span>}
+            {deliveryTouchedFields.age && deliveryFormErrors.age && (
+              <div style={{ color: c.danger, fontSize: '0.8rem', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600' }}>
+                <span>✕</span>
+                {deliveryFormErrors.age}
+              </div>
+            )}
           </div>
         </div>
 
         {/* Phone */}
-        <div style={{ marginBottom: '1.5rem' }}>
-          <label style={{ display: 'block', marginBottom: '0.75rem', fontWeight: '700', fontSize: '0.95rem', color: c.textDark }}>
-            {t('phoneNumber')} *
+        <div style={{ marginBottom: '2rem' }}>
+          <label style={{ 
+            display: 'block', 
+            marginBottom: '0.75rem', 
+            fontWeight: '700', 
+            fontSize: '0.95rem', 
+            color: c.textDark,
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px'
+          }}>
+            {t('phoneNumber')} <span style={{ color: c.danger }}>*</span>
           </label>
           <input
             type="tel"
             name="phone"
             value={deliveryFormData.phone}
             onChange={handleDeliveryInputChange}
+            onBlur={() => handleDeliveryFieldBlur('phone')}
             placeholder="+20 123 456 7890"
             style={{
               width: '100%',
               padding: '12px 16px',
-              border: `2px solid ${deliveryFormErrors.phone ? c.danger : c.border}`,
+              border: `2px solid ${deliveryTouchedFields.phone && deliveryFormErrors.phone ? c.danger : c.border}`,
               borderRadius: '12px',
               fontSize: '1rem',
               background: c.surface,
               color: c.textDark,
               transition: 'all 0.3s ease',
-              boxShadow: deliveryFormErrors.phone ? `0 0 0 4px ${c.overlay}` : 'none'
+              boxShadow: deliveryTouchedFields.phone && deliveryFormErrors.phone ? `0 0 0 4px ${c.overlay}` : 'none',
+              fontFamily: 'inherit'
             }}
-            onFocus={(e) => e.target.style.borderColor = c.secondary}
-            onBlur={(e) => e.target.style.borderColor = deliveryFormErrors.phone ? c.danger : c.border}
+            onFocus={(e) => {
+              if (!deliveryFormErrors.phone) {
+                e.target.style.borderColor = c.secondary
+              }
+            }}
           />
-          {deliveryFormErrors.phone && <span style={{ color: c.danger, fontSize: '0.8rem', marginTop: '6px', display: 'block', fontWeight: '600' }}>✕ {deliveryFormErrors.phone}</span>}
+          {deliveryTouchedFields.phone && deliveryFormErrors.phone && (
+            <div style={{ color: c.danger, fontSize: '0.8rem', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600' }}>
+              <span>✕</span>
+              {deliveryFormErrors.phone}
+            </div>
+          )}
         </div>
 
         {/* Address */}
-        <div style={{ marginBottom: '1.5rem' }}>
-          <label style={{ display: 'block', marginBottom: '0.75rem', fontWeight: '700', fontSize: '0.95rem', color: c.textDark }}>
-            {t('detailedAddress')} *
+        <div style={{ marginBottom: '2rem' }}>
+          <label style={{ 
+            display: 'block', 
+            marginBottom: '0.75rem', 
+            fontWeight: '700', 
+            fontSize: '0.95rem', 
+            color: c.textDark,
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px'
+          }}>
+            {t('detailedAddress')} <span style={{ color: c.danger }}>*</span>
           </label>
           <textarea
             name="address"
             value={deliveryFormData.address}
             onChange={handleDeliveryInputChange}
+            onBlur={() => handleDeliveryFieldBlur('address')}
             placeholder={t('enterDetailedAddress')}
             rows="3"
             style={{
               width: '100%',
               padding: '12px 16px',
-              border: `2px solid ${deliveryFormErrors.address ? c.danger : c.border}`,
+              border: `2px solid ${deliveryTouchedFields.address && deliveryFormErrors.address ? c.danger : c.border}`,
               borderRadius: '12px',
               fontSize: '1rem',
               background: c.surface,
@@ -507,24 +574,49 @@ export default function CartPage() {
               transition: 'all 0.3s ease',
               resize: 'vertical',
               fontFamily: 'inherit',
-              boxShadow: deliveryFormErrors.address ? `0 0 0 4px ${c.overlay}` : 'none'
+              boxShadow: deliveryTouchedFields.address && deliveryFormErrors.address ? `0 0 0 4px ${c.overlay}` : 'none'
             }}
-            onFocus={(e) => e.target.style.borderColor = c.secondary}
-            onBlur={(e) => e.target.style.borderColor = deliveryFormErrors.address ? c.danger : c.border}
+            onFocus={(e) => {
+              if (!deliveryFormErrors.address) {
+                e.target.style.borderColor = c.secondary
+              }
+            }}
           />
-          {deliveryFormErrors.address && <span style={{ color: c.danger, fontSize: '0.8rem', marginTop: '6px', display: 'block', fontWeight: '600' }}>✕ {deliveryFormErrors.address}</span>}
+          {deliveryTouchedFields.address && deliveryFormErrors.address && (
+            <div style={{ color: c.danger, fontSize: '0.8rem', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600' }}>
+              <span>✕</span>
+              {deliveryFormErrors.address}
+            </div>
+          )}
         </div>
 
         {/* Location Map */}
         <div style={{ marginBottom: '2rem' }}>
-          <label style={{ display: 'block', marginBottom: '0.75rem', fontWeight: '700', fontSize: '0.95rem', color: c.textDark }}>
-            {t('selectLocationOnMap')} *
+          <label style={{ 
+            display: 'block', 
+            marginBottom: '0.75rem', 
+            fontWeight: '700', 
+            fontSize: '0.95rem', 
+            color: c.textDark,
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px'
+          }}>
+            {t('selectLocationOnMap')} <span style={{ color: c.danger }}>*</span>
           </label>
           
           {!isGeolocationSupported && (
-            <p style={{ color: c.warning, fontSize: '0.85rem', marginBottom: '1rem', padding: '12px', background: `${c.overlay}`, borderRadius: '8px', fontWeight: '600' }}>
+            <div style={{ 
+              color: c.warning, 
+              fontSize: '0.85rem', 
+              marginBottom: '1rem', 
+              padding: '12px 16px',
+              background: `${c.warning}15`,
+              borderLeft: `4px solid ${c.warning}`,
+              borderRadius: '8px',
+              fontWeight: '700'
+            }}>
               ⚠️ {t('geolocationNotSupported')}
-            </p>
+            </div>
           )}
           
           <div style={{
@@ -533,7 +625,8 @@ export default function CartPage() {
             borderRadius: '16px',
             overflow: 'hidden',
             position: 'relative',
-            boxShadow: `0 4px 12px ${c.overlay}`
+            boxShadow: `0 4px 12px ${c.overlay}`,
+            transition: 'all 0.3s ease'
           }}>
             {mapCenter ? (
               <iframe
@@ -553,17 +646,31 @@ export default function CartPage() {
                 height: '100%',
                 backgroundColor: c.overlay,
                 flexDirection: 'column',
-                gap: '10px'
+                gap: '12px'
               }}>
-                <span style={{ fontSize: '2rem' }}>📍</span>
-                <span style={{ color: c.textMuted, fontWeight: '600' }}>{t('loadingMap')}...</span>
+                <span style={{ fontSize: '2.5rem', animation: 'float 3s ease-in-out infinite' }}>📍</span>
+                <span style={{ color: c.textMuted, fontWeight: '700' }}>{t('loadingMap')}...</span>
               </div>
             )}
           </div>
           
-          {deliveryFormErrors.location && <span style={{ color: c.danger, fontSize: '0.8rem', marginTop: '6px', display: 'block', fontWeight: '600' }}>✕ {deliveryFormErrors.location}</span>}
+          {deliveryFormErrors.location && (
+            <div style={{ 
+              color: c.danger, 
+              fontSize: '0.8rem', 
+              marginTop: '8px', 
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontWeight: '700'
+            }}>
+              <span>✕</span>
+              {deliveryFormErrors.location}
+            </div>
+          )}
         </div>
 
+        {/* Submit Button */}
         <button
           type="submit"
           style={{
@@ -579,7 +686,11 @@ export default function CartPage() {
             transition: 'all 0.3s ease',
             boxShadow: `0 4px 12px ${c.overlay}`,
             textTransform: 'uppercase',
-            letterSpacing: '0.5px'
+            letterSpacing: '0.5px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px'
           }}
           onMouseEnter={(e) => {
             e.target.style.transform = 'translateY(-2px)'
@@ -590,10 +701,11 @@ export default function CartPage() {
             e.target.style.boxShadow = `0 4px 12px ${c.overlay}`
           }}
         >
-          ✓ {t('saveDeliveryInfo')}
+          <span style={{ fontSize: '1.2rem' }}>✓</span>
+          {t('saveDeliveryInfo')}
         </button>
-      </form>
-    </div>
+      </div>
+    </form>
   );
 
   if (totalItems === 0) {
@@ -744,7 +856,8 @@ export default function CartPage() {
         <div style={{ 
           display: 'grid',
           gridTemplateColumns: isMobile ? '1fr' : '1fr 420px',
-          gap: '2.5rem'
+          gap: '2.5rem',
+          alignItems: 'start'
         }}>
           {/* Cart Items */}
           {items.length > 0 && (
@@ -1108,11 +1221,13 @@ export default function CartPage() {
             </div>
           )}
 
-          {/* Sidebar */}
+          {/* Sidebar - NOW BETTER POSITIONED */}
           <div style={{
             display: 'flex',
             flexDirection: 'column',
-            gap: '2rem'
+            gap: '2rem',
+            position: 'sticky',
+            top: '20px'
           }}>
             {/* Delivery Info Form */}
             <DeliveryInfoForm />
@@ -1155,7 +1270,8 @@ export default function CartPage() {
                     color: c.textDark,
                     fontSize: '0.95rem',
                     fontWeight: '600',
-                    transition: 'all 0.3s ease'
+                    transition: 'all 0.3s ease',
+                    fontFamily: 'inherit'
                   }}
                   onFocus={(e) => e.target.style.borderColor = c.secondary}
                   onBlur={(e) => e.target.style.borderColor = c.border}
@@ -1230,8 +1346,6 @@ export default function CartPage() {
                 background: c.card,
                 borderRadius: '16px',
                 border: `2px solid ${c.secondary}40`,
-                position: 'sticky',
-                top: '120px',
                 boxShadow: `0 8px 24px ${c.overlay}`
               }}>
                 <h3 style={{
@@ -1410,6 +1524,16 @@ export default function CartPage() {
 
         button:disabled {
           cursor: not-allowed !important;
+        }
+
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+
+        input[type=number] {
+          -moz-appearance: textfield;
         }
       `}</style>
     </div>

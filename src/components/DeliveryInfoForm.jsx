@@ -62,6 +62,7 @@ export default function DeliveryInfoForm({ onValidChange }) {
   useEffect(() => {
     if (!navigator.geolocation) {
       setIsGeolocationSupported(false);
+      setMapCenter({ lat: 30.0444, lng: 31.2357 });
       return;
     }
 
@@ -70,6 +71,7 @@ export default function DeliveryInfoForm({ onValidChange }) {
         const { latitude, longitude } = position.coords;
         setMapCenter({ lat: latitude, lng: longitude });
         
+        // Only update if not already set
         if (!formData.latitude && !formData.longitude) {
           setFormData(prev => ({
             ...prev,
@@ -80,11 +82,12 @@ export default function DeliveryInfoForm({ onValidChange }) {
       },
       (error) => {
         console.warn('Geolocation error:', error);
+        // Fallback to Cairo, Egypt
         setMapCenter({ lat: 30.0444, lng: 31.2357 });
       },
       { enableHighAccuracy: true, timeout: 10000 }
     );
-  }, []);
+  }, []); // Empty dependency - run only once on mount
 
   const validateForm = () => {
     const newErrors = {};
@@ -101,17 +104,20 @@ export default function DeliveryInfoForm({ onValidChange }) {
     return Object.keys(newErrors).length === 0;
   };
 
+  // FIXED: Input change handler - no component re-rendering issues
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-    setTouchedFields(prev => ({ ...prev, [name]: true }));
   };
 
+  // FIXED: Blur handler - validates only when user leaves field
   const handleFieldBlur = (fieldName) => {
     setTouchedFields(prev => ({ ...prev, [fieldName]: true }));
+    // Validate all fields to get errors
     validateForm();
   };
 
+  // FIXED: Form submit - prevents default and validates before submission
   const handleSubmit = (e) => {
     e.preventDefault();
     if (validateForm()) {
@@ -122,167 +128,255 @@ export default function DeliveryInfoForm({ onValidChange }) {
     }
   };
 
-  const FormField = ({ label, name, type = 'text', placeholder, isTextArea = false, error, value, onChange, onBlur, children }) => (
-    <div style={{ marginBottom: '1.5rem' }}>
-      <label style={{ 
-        display: 'block', 
-        marginBottom: '0.75rem', 
-        fontWeight: '800', 
-        fontSize: '0.95rem', 
-        color: c.textDark,
-        textTransform: 'uppercase',
-        letterSpacing: '0.5px'
+  return (
+    <form onSubmit={handleSubmit}>
+      <div style={{ 
+        background: c.card,
+        padding: '2.5rem',
+        borderRadius: '20px',
+        border: `2px solid ${c.border}`,
+        boxShadow: `0 8px 24px ${c.overlay}`
       }}>
-        {label} <span style={{ color: c.danger }}>*</span>
-      </label>
-      
-      {isTextArea ? (
-        <textarea
-          name={name}
-          value={value}
-          onChange={onChange}
-          onBlur={onBlur}
-          placeholder={placeholder}
-          rows="3"
-          style={{
-            width: '100%',
-            padding: '12px 16px',
-            border: `2px solid ${error ? c.danger : c.border}`,
-            borderRadius: '12px',
-            fontSize: '1rem',
-            background: c.surface,
-            color: c.textDark,
-            transition: 'all 0.3s ease',
-            resize: 'vertical',
-            fontFamily: 'inherit',
-            boxShadow: error ? `0 0 0 4px ${c.overlay}` : 'none'
-          }}
-          onFocus={(e) => !error && (e.target.style.borderColor = c.secondary)}
-          onBlur={(e) => {
-            onBlur?.();
-            e.target.style.borderColor = error ? c.danger : c.border;
-          }}
-        />
-      ) : (
-        <input
-          type={type}
-          name={name}
-          value={value}
-          onChange={onChange}
-          onBlur={onBlur}
-          placeholder={placeholder}
-          min={type === 'number' ? '13' : undefined}
-          max={type === 'number' ? '120' : undefined}
-          style={{
-            width: '100%',
-            padding: '12px 16px',
-            border: `2px solid ${error ? c.danger : c.border}`,
-            borderRadius: '12px',
-            fontSize: '1rem',
-            background: c.surface,
-            color: c.textDark,
-            transition: 'all 0.3s ease',
-            boxShadow: error ? `0 0 0 4px ${c.overlay}` : 'none'
-          }}
-          onFocus={(e) => !error && (e.target.style.borderColor = c.secondary)}
-          onBlur={(e) => {
-            onBlur?.();
-            e.target.style.borderColor = error ? c.danger : c.border;
-          }}
-        />
-      )}
-      
-      {error && (
-        <div style={{ 
-          color: c.danger, 
-          fontSize: '0.8rem', 
-          marginTop: '8px', 
+        <h3 style={{ 
+          marginBottom: '2rem', 
+          color: c.textDark,
+          fontWeight: '900',
+          fontSize: '1.35rem',
           display: 'flex',
           alignItems: 'center',
-          gap: '6px',
-          fontWeight: '700',
-          animation: 'slideDown 0.3s ease-out'
+          gap: '12px',
+          textTransform: 'uppercase',
+          letterSpacing: '0.5px'
         }}>
-          <span>✕</span>
-          {error}
-        </div>
-      )}
-
-      {children}
-    </div>
-  );
-
-  return (
-    <div style={{ 
-      background: c.card,
-      padding: '2.5rem',
-      borderRadius: '20px',
-      border: `2px solid ${c.border}`,
-      boxShadow: `0 8px 24px ${c.overlay}`
-    }}>
-      <h3 style={{ 
-        marginBottom: '2rem', 
-        color: c.textDark,
-        fontWeight: '900',
-        fontSize: '1.35rem',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '12px',
-        textTransform: 'uppercase',
-        letterSpacing: '0.5px'
-      }}>
-        <span style={{ fontSize: '1.6rem' }}>📍</span>
-        {t('deliveryInformation')}
-      </h3>
-      
-      <form onSubmit={handleSubmit}>
+          <span style={{ fontSize: '1.6rem' }}>📍</span>
+          {t('deliveryInformation')}
+        </h3>
+        
         {/* Name & Age Grid */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
-          <FormField
-            label={t('fullName')}
-            name="name"
-            placeholder={t('enterFullName')}
-            value={formData.name}
-            onChange={handleInputChange}
-            onBlur={() => handleFieldBlur('name')}
-            error={touchedFields.name && errors.name}
-          />
-          
-          <FormField
-            label={t('age')}
-            name="age"
-            type="number"
-            placeholder={t('enterAge')}
-            value={formData.age}
-            onChange={handleInputChange}
-            onBlur={() => handleFieldBlur('age')}
-            error={touchedFields.age && errors.age}
-          />
+          {/* Name Field */}
+          <div>
+            <label style={{ 
+              display: 'block', 
+              marginBottom: '0.75rem', 
+              fontWeight: '800', 
+              fontSize: '0.95rem', 
+              color: c.textDark,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px'
+            }}>
+              {t('fullName')} <span style={{ color: c.danger }}>*</span>
+            </label>
+            <input
+              type="text"
+              name="name"
+              value={formData.name}
+              onChange={handleInputChange}
+              onBlur={() => handleFieldBlur('name')}
+              placeholder={t('enterFullName')}
+              style={{
+                width: '100%',
+                padding: '12px 16px',
+                border: `2px solid ${touchedFields.name && errors.name ? c.danger : c.border}`,
+                borderRadius: '12px',
+                fontSize: '1rem',
+                background: c.surface,
+                color: c.textDark,
+                transition: 'all 0.3s ease',
+                boxShadow: touchedFields.name && errors.name ? `0 0 0 4px ${c.overlay}` : 'none',
+                fontFamily: 'inherit'
+              }}
+              onFocus={(e) => {
+                if (!errors.name) {
+                  e.target.style.borderColor = c.secondary
+                }
+              }}
+            />
+            {touchedFields.name && errors.name && (
+              <div style={{ 
+                color: c.danger, 
+                fontSize: '0.8rem', 
+                marginTop: '8px', 
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontWeight: '700',
+                animation: 'slideDown 0.3s ease-out'
+              }}>
+                <span>✕</span>
+                {errors.name}
+              </div>
+            )}
+          </div>
+
+          {/* Age Field */}
+          <div>
+            <label style={{ 
+              display: 'block', 
+              marginBottom: '0.75rem', 
+              fontWeight: '800', 
+              fontSize: '0.95rem', 
+              color: c.textDark,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px'
+            }}>
+              {t('age')} <span style={{ color: c.danger }}>*</span>
+            </label>
+            <input
+              type="number"
+              name="age"
+              value={formData.age}
+              onChange={handleInputChange}
+              onBlur={() => handleFieldBlur('age')}
+              min="13"
+              max="120"
+              placeholder={t('enterAge')}
+              style={{
+                width: '100%',
+                padding: '12px 16px',
+                border: `2px solid ${touchedFields.age && errors.age ? c.danger : c.border}`,
+                borderRadius: '12px',
+                fontSize: '1rem',
+                background: c.surface,
+                color: c.textDark,
+                transition: 'all 0.3s ease',
+                boxShadow: touchedFields.age && errors.age ? `0 0 0 4px ${c.overlay}` : 'none',
+                fontFamily: 'inherit'
+              }}
+              onFocus={(e) => {
+                if (!errors.age) {
+                  e.target.style.borderColor = c.secondary
+                }
+              }}
+            />
+            {touchedFields.age && errors.age && (
+              <div style={{ 
+                color: c.danger, 
+                fontSize: '0.8rem', 
+                marginTop: '8px', 
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontWeight: '700',
+                animation: 'slideDown 0.3s ease-out'
+              }}>
+                <span>✕</span>
+                {errors.age}
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Phone */}
-        <FormField
-          label={t('phoneNumber')}
-          name="phone"
-          type="tel"
-          placeholder="+20 123 456 7890"
-          value={formData.phone}
-          onChange={handleInputChange}
-          onBlur={() => handleFieldBlur('phone')}
-          error={touchedFields.phone && errors.phone}
-        />
+        {/* Phone Field */}
+        <div style={{ marginBottom: '1.5rem' }}>
+          <label style={{ 
+            display: 'block', 
+            marginBottom: '0.75rem', 
+            fontWeight: '800', 
+            fontSize: '0.95rem', 
+            color: c.textDark,
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px'
+          }}>
+            {t('phoneNumber')} <span style={{ color: c.danger }}>*</span>
+          </label>
+          <input
+            type="tel"
+            name="phone"
+            value={formData.phone}
+            onChange={handleInputChange}
+            onBlur={() => handleFieldBlur('phone')}
+            placeholder="+20 123 456 7890"
+            style={{
+              width: '100%',
+              padding: '12px 16px',
+              border: `2px solid ${touchedFields.phone && errors.phone ? c.danger : c.border}`,
+              borderRadius: '12px',
+              fontSize: '1rem',
+              background: c.surface,
+              color: c.textDark,
+              transition: 'all 0.3s ease',
+              boxShadow: touchedFields.phone && errors.phone ? `0 0 0 4px ${c.overlay}` : 'none',
+              fontFamily: 'inherit'
+            }}
+            onFocus={(e) => {
+              if (!errors.phone) {
+                e.target.style.borderColor = c.secondary
+              }
+            }}
+          />
+          {touchedFields.phone && errors.phone && (
+            <div style={{ 
+              color: c.danger, 
+              fontSize: '0.8rem', 
+              marginTop: '8px', 
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontWeight: '700',
+              animation: 'slideDown 0.3s ease-out'
+            }}>
+              <span>✕</span>
+              {errors.phone}
+            </div>
+          )}
+        </div>
 
-        {/* Address */}
-        <FormField
-          label={t('detailedAddress')}
-          name="address"
-          placeholder={t('enterDetailedAddress')}
-          value={formData.address}
-          onChange={handleInputChange}
-          onBlur={() => handleFieldBlur('address')}
-          error={touchedFields.address && errors.address}
-          isTextArea
-        />
+        {/* Address Field */}
+        <div style={{ marginBottom: '1.5rem' }}>
+          <label style={{ 
+            display: 'block', 
+            marginBottom: '0.75rem', 
+            fontWeight: '800', 
+            fontSize: '0.95rem', 
+            color: c.textDark,
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px'
+          }}>
+            {t('detailedAddress')} <span style={{ color: c.danger }}>*</span>
+          </label>
+          <textarea
+            name="address"
+            value={formData.address}
+            onChange={handleInputChange}
+            onBlur={() => handleFieldBlur('address')}
+            placeholder={t('enterDetailedAddress')}
+            rows="3"
+            style={{
+              width: '100%',
+              padding: '12px 16px',
+              border: `2px solid ${touchedFields.address && errors.address ? c.danger : c.border}`,
+              borderRadius: '12px',
+              fontSize: '1rem',
+              background: c.surface,
+              color: c.textDark,
+              transition: 'all 0.3s ease',
+              resize: 'vertical',
+              fontFamily: 'inherit',
+              boxShadow: touchedFields.address && errors.address ? `0 0 0 4px ${c.overlay}` : 'none'
+            }}
+            onFocus={(e) => {
+              if (!errors.address) {
+                e.target.style.borderColor = c.secondary
+              }
+            }}
+          />
+          {touchedFields.address && errors.address && (
+            <div style={{ 
+              color: c.danger, 
+              fontSize: '0.8rem', 
+              marginTop: '8px', 
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontWeight: '700',
+              animation: 'slideDown 0.3s ease-out'
+            }}>
+              <span>✕</span>
+              {errors.address}
+            </div>
+          )}
+        </div>
 
         {/* Location Map */}
         <div style={{ marginBottom: '2rem' }}>
@@ -398,7 +492,7 @@ export default function DeliveryInfoForm({ onValidChange }) {
           <span style={{ fontSize: '1.2rem' }}>✓</span>
           {t('saveDeliveryInfo')}
         </button>
-      </form>
+      </div>
 
       <style>{`
         @keyframes slideDown {
@@ -431,6 +525,6 @@ export default function DeliveryInfoForm({ onValidChange }) {
           -moz-appearance: textfield;
         }
       `}</style>
-    </div>
+    </form>
   );
 }
