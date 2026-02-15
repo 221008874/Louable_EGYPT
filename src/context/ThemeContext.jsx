@@ -30,7 +30,7 @@ export function ThemeProvider({ children }) {
     if (saved === 'dark' || saved === 'light') {
       setTheme(saved)
     } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      setTheme('dark')
+      setTheme('light')
     }
   }, [])
 
