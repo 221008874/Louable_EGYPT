@@ -59,11 +59,7 @@ export default function Home() {
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-<<<<<<< HEAD
-        const querySnapshot = await getDocs(collection(db, 'products_pi'))
-=======
         const querySnapshot = await getDocs(collection(db, 'products_egp'))
->>>>>>> cf301406f27573cb10e806fc06ea3661983c91c1
         const productList = querySnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
