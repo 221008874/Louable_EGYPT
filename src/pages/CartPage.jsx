@@ -1,4 +1,4 @@
-// src/pages/CartPage.jsx - UPDATED WITH EGP CURRENCY
+// src/pages/CartPage.jsx - UPDATED WITH EGP CURRENCY AND DELIVERY INFO
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCart } from '../context/CartContext'
@@ -8,7 +8,19 @@ import { db } from '../services/firebase'
 import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore'
 
 export default function CartPage() {
-  const { items, totalItems, totalPrice, removeFromCart, updateQuantity, clearCart, error: cartError, clearError } = useCart()
+  const { 
+    items, 
+    totalItems, 
+    totalPrice, 
+    removeFromCart, 
+    updateQuantity, 
+    clearCart, 
+    error: cartError, 
+    clearError,
+    deliveryInfo,
+    setDeliveryInfo,
+    clearDeliveryInfo
+  } = useCart()
   const { t, lang } = useLanguage()
   const { theme } = useTheme()
   const navigate = useNavigate()
@@ -17,6 +29,20 @@ export default function CartPage() {
   const [appliedCoupon, setAppliedCoupon] = useState(null)
   const [couponInput, setCouponInput] = useState('')
   const [expandedItem, setExpandedItem] = useState(null)
+  
+  // Delivery info form state
+  const [deliveryFormData, setDeliveryFormData] = useState({
+    name: deliveryInfo?.name || '',
+    age: deliveryInfo?.age || '',
+    phone: deliveryInfo?.phone || '',
+    address: deliveryInfo?.address || '',
+    latitude: deliveryInfo?.latitude || null,
+    longitude: deliveryInfo?.longitude || null
+  });
+  const [mapCenter, setMapCenter] = useState(null);
+  const [isGeolocationSupported, setIsGeolocationSupported] = useState(true);
+  const [deliveryFormErrors, setDeliveryFormErrors] = useState({});
+  const [isDeliveryInfoValid, setIsDeliveryInfoValid] = useState(!!deliveryInfo);
   
   // State for enhanced product display and stock validation
   const [productDetails, setProductDetails] = useState({})
@@ -32,6 +58,38 @@ export default function CartPage() {
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [])
+
+  // Get user's current location on mount
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      setIsGeolocationSupported(false);
+      // Fallback to Cairo, Egypt
+      setMapCenter({ lat: 30.0444, lng: 31.2357 });
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        setMapCenter({ lat: latitude, lng: longitude });
+        
+        // If no saved location, use current location
+        if (!deliveryFormData.latitude && !deliveryFormData.longitude) {
+          setDeliveryFormData(prev => ({
+            ...prev,
+            latitude,
+            longitude
+          }));
+        }
+      },
+      (error) => {
+        console.warn('Geolocation error:', error);
+        // Fallback to Cairo, Egypt if geolocation fails
+        setMapCenter({ lat: 30.0444, lng: 31.2357 });
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }, []);
 
   // Fetch current product details including stock
   useEffect(() => {
@@ -97,6 +155,35 @@ export default function CartPage() {
     }
   }
 
+  const validateDeliveryForm = () => {
+    const newErrors = {};
+    
+    if (!deliveryFormData.name.trim()) newErrors.name = t('nameRequired');
+    if (!deliveryFormData.age || deliveryFormData.age < 13 || deliveryFormData.age > 120) newErrors.age = t('validAgeRequired');
+    if (!deliveryFormData.phone.trim() || !/^\+?[\d\s\-\(\)]{10,}$/.test(deliveryFormData.phone)) {
+      newErrors.phone = t('validPhoneRequired');
+    }
+    if (!deliveryFormData.address.trim()) newErrors.address = t('addressRequired');
+    if (!deliveryFormData.latitude || !deliveryFormData.longitude) newErrors.location = t('locationRequired');
+    
+    setDeliveryFormErrors(newErrors);
+    const isValid = Object.keys(newErrors).length === 0;
+    setIsDeliveryInfoValid(isValid);
+    return isValid;
+  };
+
+  const handleDeliveryInputChange = (e) => {
+    const { name, value } = e.target;
+    setDeliveryFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSaveDeliveryInfo = (e) => {
+    e.preventDefault();
+    if (validateDeliveryForm()) {
+      setDeliveryInfo(deliveryFormData);
+    }
+  };
+
   const discountAmount = appliedCoupon ? totalPrice * appliedCoupon.discount : 0
   const finalPrice = totalPrice - discountAmount
 
@@ -108,13 +195,19 @@ export default function CartPage() {
       return
     }
 
+    // Validate delivery info
+    if (!deliveryInfo) {
+      alert(t('pleaseCompleteDeliveryInfo'));
+      return;
+    }
+
     setIsProcessing(true)
 
     try {
       console.log('💳 Processing payment with EGP...')
       
-      // Create order in Firebase
-      await addDoc(collection(db, 'orders'), {
+      // Create order in Firebase with delivery info
+      await addDoc(collection(db, 'orders_egp'), {
         orderId: `order_${Date.now()}`,
         items: items.map(item => ({
           id: item.id,
@@ -127,17 +220,28 @@ export default function CartPage() {
         currency: 'EGP',
         paymentMethod: 'Cash on Delivery',
         status: 'pending',
+        // Delivery information
+        customerName: deliveryInfo.name,
+        customerAge: parseInt(deliveryInfo.age),
+        customerPhone: deliveryInfo.phone,
+        customerAddress: deliveryInfo.address,
+        customerLocation: {
+          latitude: deliveryInfo.latitude,
+          longitude: deliveryInfo.longitude
+        },
         createdAt: serverTimestamp()
       })
 
       console.log('✅ Order saved to Firebase')
-      clearCart()
+      clearCart();
+      clearDeliveryInfo(); // Clear delivery info after successful order
       navigate('/order-success', { 
         state: { 
           orderId: `order_${Date.now()}`, 
           txid: `TXN-${Date.now()}`, 
           totalPrice: finalPrice, 
-          items 
+          items,
+          deliveryInfo
         } 
       })
       
@@ -259,6 +363,184 @@ export default function CartPage() {
       </div>
     )
   }
+
+  // Delivery Info Form Component
+  const DeliveryInfoForm = () => (
+    <div style={{ 
+      background: '#f8f9fa', 
+      padding: '2rem', 
+      borderRadius: '12px',
+      border: '1px solid #dee2e6',
+      marginBottom: '2rem'
+    }}>
+      <h3 style={{ 
+        marginBottom: '1.5rem', 
+        color: '#2c3e50',
+        fontWeight: '700'
+      }}>
+        📍 {t('deliveryInformation')}
+      </h3>
+      
+      <form onSubmit={handleSaveDeliveryInfo}>
+        {/* Name */}
+        <div style={{ marginBottom: '1rem' }}>
+          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600' }}>
+            {t('fullName')} *
+          </label>
+          <input
+            type="text"
+            name="name"
+            value={deliveryFormData.name}
+            onChange={handleDeliveryInputChange}
+            placeholder={t('enterFullName')}
+            style={{
+              width: '100%',
+              padding: '0.75rem',
+              border: '1px solid #ced4da',
+              borderRadius: '6px',
+              fontSize: '1rem'
+            }}
+          />
+          {deliveryFormErrors.name && <span style={{ color: '#dc3545', fontSize: '0.875rem' }}>{deliveryFormErrors.name}</span>}
+        </div>
+
+        {/* Age */}
+        <div style={{ marginBottom: '1rem' }}>
+          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600' }}>
+            {t('age')} *
+          </label>
+          <input
+            type="number"
+            name="age"
+            value={deliveryFormData.age}
+            onChange={handleDeliveryInputChange}
+            min="13"
+            max="120"
+            placeholder={t('enterAge')}
+            style={{
+              width: '100%',
+              padding: '0.75rem',
+              border: '1px solid #ced4da',
+              borderRadius: '6px',
+              fontSize: '1rem'
+            }}
+          />
+          {deliveryFormErrors.age && <span style={{ color: '#dc3545', fontSize: '0.875rem' }}>{deliveryFormErrors.age}</span>}
+        </div>
+
+        {/* Phone */}
+        <div style={{ marginBottom: '1rem' }}>
+          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600' }}>
+            {t('phoneNumber')} *
+          </label>
+          <input
+            type="tel"
+            name="phone"
+            value={deliveryFormData.phone}
+            onChange={handleDeliveryInputChange}
+            placeholder="+20 123 456 7890"
+            style={{
+              width: '100%',
+              padding: '0.75rem',
+              border: '1px solid #ced4da',
+              borderRadius: '6px',
+              fontSize: '1rem'
+            }}
+          />
+          {deliveryFormErrors.phone && <span style={{ color: '#dc3545', fontSize: '0.875rem' }}>{deliveryFormErrors.phone}</span>}
+        </div>
+
+        {/* Address */}
+        <div style={{ marginBottom: '1rem' }}>
+          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600' }}>
+            {t('detailedAddress')} *
+          </label>
+          <textarea
+            name="address"
+            value={deliveryFormData.address}
+            onChange={handleDeliveryInputChange}
+            placeholder={t('enterDetailedAddress')}
+            rows="3"
+            style={{
+              width: '100%',
+              padding: '0.75rem',
+              border: '1px solid #ced4da',
+              borderRadius: '6px',
+              fontSize: '1rem',
+              resize: 'vertical'
+            }}
+          />
+          {deliveryFormErrors.address && <span style={{ color: '#dc3545', fontSize: '0.875rem' }}>{deliveryFormErrors.address}</span>}
+        </div>
+
+        {/* Location Map */}
+        <div style={{ marginBottom: '1.5rem' }}>
+          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600' }}>
+            {t('selectLocationOnMap')} *
+          </label>
+          
+          {!isGeolocationSupported && (
+            <p style={{ color: '#ffc107', fontSize: '0.875rem', marginBottom: '0.5rem' }}>
+              ⚠️ {t('geolocationNotSupported')}
+            </p>
+          )}
+          
+          <div style={{
+            height: '300px',
+            border: '1px solid #ced4da',
+            borderRadius: '6px',
+            overflow: 'hidden',
+            position: 'relative'
+          }}>
+            {mapCenter ? (
+              <iframe
+                src={`https://www.openstreetmap.org/export/embed.html?bbox=${mapCenter.lng - 0.01}%2C${mapCenter.lat - 0.01}%2C${mapCenter.lng + 0.01}%2C${mapCenter.lat + 0.01}&marker=${mapCenter.lat}%2C${mapCenter.lng}`}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  border: 'none'
+                }}
+                title="Location Map"
+              />
+            ) : (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                height: '100%',
+                backgroundColor: '#e9ecef'
+              }}>
+                <span>📍 {t('loadingMap')}...</span>
+              </div>
+            )}
+          </div>
+          
+          {deliveryFormErrors.location && <span style={{ color: '#dc3545', fontSize: '0.875rem' }}>{deliveryFormErrors.location}</span>}
+          
+          <p style={{ fontSize: '0.875rem', color: '#6c757d', marginTop: '0.5rem' }}>
+            {t('clickMapToSelectLocation')}
+          </p>
+        </div>
+
+        <button
+          type="submit"
+          style={{
+            width: '100%',
+            padding: '0.75rem',
+            background: '#28a745',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            fontSize: '1rem',
+            fontWeight: '700',
+            cursor: 'pointer'
+          }}
+        >
+          {t('saveDeliveryInfo')}
+        </button>
+      </form>
+    </div>
+  );
 
   if (totalItems === 0) {
     return (
@@ -740,6 +1022,9 @@ export default function CartPage() {
             flexDirection: 'column',
             gap: '1.5rem'
           }}>
+            {/* Delivery Info Form */}
+            <DeliveryInfoForm />
+
             {/* Coupon Section */}
             <div style={{
               padding: '1.5rem',
@@ -900,11 +1185,11 @@ export default function CartPage() {
                 {/* Checkout Button */}
                 <button
                   onClick={handleCheckout}
-                  disabled={isProcessing || Object.keys(stockErrors).length > 0}
+                  disabled={isProcessing || Object.keys(stockErrors).length > 0 || !isDeliveryInfoValid}
                   style={{
                     width: '100%',
                     padding: '14px',
-                    background: (Object.keys(stockErrors).length === 0 && !isProcessing)
+                    background: (Object.keys(stockErrors).length === 0 && !isProcessing && isDeliveryInfoValid)
                       ? `linear-gradient(135deg, ${c.secondary} 0%, #B8860B 100%)`
                       : '#9CA3AF',
                     color: 'white',
@@ -912,8 +1197,8 @@ export default function CartPage() {
                     borderRadius: '10px',
                     fontWeight: '700',
                     fontSize: '1rem',
-                    cursor: (Object.keys(stockErrors).length === 0 && !isProcessing) ? 'pointer' : 'not-allowed',
-                    opacity: (Object.keys(stockErrors).length === 0 && !isProcessing) ? 1 : 0.7,
+                    cursor: (Object.keys(stockErrors).length === 0 && !isProcessing && isDeliveryInfoValid) ? 'pointer' : 'not-allowed',
+                    opacity: (Object.keys(stockErrors).length === 0 && !isProcessing && isDeliveryInfoValid) ? 1 : 0.7,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -922,7 +1207,7 @@ export default function CartPage() {
                     boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
                   }}
                   onMouseEnter={(e) => {
-                    if ((Object.keys(stockErrors).length === 0 && !isProcessing)) {
+                    if ((Object.keys(stockErrors).length === 0 && !isProcessing && isDeliveryInfoValid)) {
                       e.target.style.transform = 'translateY(-2px)'
                       e.target.style.boxShadow = '0 6px 16px rgba(212, 160, 23, 0.3)'
                     }
@@ -937,6 +1222,8 @@ export default function CartPage() {
                       <span>⏳</span>
                       {t('processing')}...
                     </>
+                  ) : !isDeliveryInfoValid ? (
+                    '📝 ' + t('completeDeliveryInfo')
                   ) : Object.keys(stockErrors).length > 0 ? (
                     '❌ ' + t('resolveStockIssues')
                   ) : (
@@ -947,14 +1234,18 @@ export default function CartPage() {
                   )}
                 </button>
 
-                {Object.keys(stockErrors).length > 0 && (
+                {(!isDeliveryInfoValid || Object.keys(stockErrors).length > 0) && (
                   <p style={{
                     marginTop: '12px',
                     color: c.danger,
                     fontSize: '0.8rem',
                     textAlign: 'center'
                   }}>
-                    ⚠️ {t('adjustQuantitiesBeforeCheckout')}
+                    {(!isDeliveryInfoValid && Object.keys(stockErrors).length > 0) 
+                      ? t('completeAllRequirements') 
+                      : !isDeliveryInfoValid 
+                        ? t('completeDeliveryInfo') 
+                        : t('adjustQuantitiesBeforeCheckout')}
                   </p>
                 )}
               </div>

@@ -10,9 +10,23 @@ const UPDATE_QUANTITY = 'UPDATE_QUANTITY'
 const CLEAR_CART = 'CLEAR_CART'
 const SET_ERROR = 'SET_ERROR'
 const CLEAR_ERROR = 'CLEAR_ERROR'
+const SET_DELIVERY_INFO = 'SET_DELIVERY_INFO'
+const CLEAR_DELIVERY_INFO = 'CLEAR_DELIVERY_INFO'
 
 const cartReducer = (state, action) => {
   switch (action.type) {
+    case SET_DELIVERY_INFO:
+      return {
+        ...state,
+        deliveryInfo: action.payload
+      };
+    
+    case CLEAR_DELIVERY_INFO:
+      return {
+        ...state,
+        deliveryInfo: null
+      };
+      
     case ADD_ITEM: {
       const { product, quantity = 1 } = action.payload
       const existingItem = state.items.find(item => item.id === product.id)
@@ -109,7 +123,8 @@ const cartReducer = (state, action) => {
 export function CartProvider({ children }) {
   const [cart, dispatch] = useReducer(cartReducer, {
     items: [],
-    error: null
+    error: null,
+    deliveryInfo: null
   })
 
   /**
@@ -245,6 +260,16 @@ export function CartProvider({ children }) {
     dispatch({ type: CLEAR_ERROR })
   }, [])
 
+  // Set delivery information
+  const setDeliveryInfo = useCallback((info) => {
+    dispatch({ type: SET_DELIVERY_INFO, payload: info });
+  }, []);
+
+  // Clear delivery information
+  const clearDeliveryInfo = useCallback(() => {
+    dispatch({ type: CLEAR_DELIVERY_INFO });
+  }, []);
+
   // Validate entire cart against current stock (useful after page refresh)
   const validateCart = useCallback((products) => {
     const invalidItems = []
@@ -302,11 +327,14 @@ export function CartProvider({ children }) {
         totalItems,
         totalPrice,
         error: cart.error,
+        deliveryInfo: cart.deliveryInfo,
         addToCart,
         removeFromCart,
         updateQuantity,
         clearCart,
         clearError,
+        setDeliveryInfo,
+        clearDeliveryInfo,
         validateCart,
         getCartStockInfo
       }}
