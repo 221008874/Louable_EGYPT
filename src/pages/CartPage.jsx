@@ -1,4 +1,4 @@
-// src/pages/CartPage.jsx - UPDATED WITH EGP CURRENCY AND DELIVERY INFO
+// src/pages/CartPage.jsx - ENHANCED UI/UX
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCart } from '../context/CartContext'
@@ -29,6 +29,8 @@ export default function CartPage() {
   const [appliedCoupon, setAppliedCoupon] = useState(null)
   const [couponInput, setCouponInput] = useState('')
   const [expandedItem, setExpandedItem] = useState(null)
+  const [scrolled, setScrolled] = useState(false)
+  const [selectedTab, setSelectedTab] = useState('items')
   
   // Delivery info form state
   const [deliveryFormData, setDeliveryFormData] = useState({
@@ -49,6 +51,7 @@ export default function CartPage() {
   const [stockErrors, setStockErrors] = useState({})
   const [isUpdating, setIsUpdating] = useState({})
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024)
+  const [hoveredItem, setHoveredItem] = useState(null)
 
   const isMobile = windowWidth < 768
   const isSmallMobile = windowWidth < 480
@@ -59,11 +62,16 @@ export default function CartPage() {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
+  useEffect(() => {
+    const handleScroll = () => setScrolled(window.scrollY > 50)
+    window.addEventListener('scroll', handleScroll)
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
+
   // Get user's current location on mount
   useEffect(() => {
     if (!navigator.geolocation) {
       setIsGeolocationSupported(false);
-      // Fallback to Cairo, Egypt
       setMapCenter({ lat: 30.0444, lng: 31.2357 });
       return;
     }
@@ -73,7 +81,6 @@ export default function CartPage() {
         const { latitude, longitude } = position.coords;
         setMapCenter({ lat: latitude, lng: longitude });
         
-        // If no saved location, use current location
         if (!deliveryFormData.latitude && !deliveryFormData.longitude) {
           setDeliveryFormData(prev => ({
             ...prev,
@@ -84,7 +91,6 @@ export default function CartPage() {
       },
       (error) => {
         console.warn('Geolocation error:', error);
-        // Fallback to Cairo, Egypt if geolocation fails
         setMapCenter({ lat: 30.0444, lng: 31.2357 });
       },
       { enableHighAccuracy: true, timeout: 10000 }
@@ -106,7 +112,6 @@ export default function CartPage() {
             const data = docSnap.data()
             details[item.id] = data
             
-            // Validate stock
             if (data.stock < item.quantity) {
               errors[item.id] = {
                 type: 'INSUFFICIENT_STOCK',
@@ -188,14 +193,12 @@ export default function CartPage() {
   const finalPrice = totalPrice - discountAmount
 
   const handleCheckout = async () => {
-    // Validate stock before checkout
     const hasStockErrors = Object.keys(stockErrors).length > 0
     if (hasStockErrors) {
       alert(t('resolveStockIssues'))
       return
     }
 
-    // Validate delivery info
     if (!deliveryInfo) {
       alert(t('pleaseCompleteDeliveryInfo'));
       return;
@@ -204,9 +207,6 @@ export default function CartPage() {
     setIsProcessing(true)
 
     try {
-      console.log('💳 Processing payment with EGP...')
-      
-      // Create order in Firebase with delivery info
       await addDoc(collection(db, 'orders_egp'), {
         orderId: `order_${Date.now()}`,
         items: items.map(item => ({
@@ -220,7 +220,6 @@ export default function CartPage() {
         currency: 'EGP',
         paymentMethod: 'Cash on Delivery',
         status: 'pending',
-        // Delivery information
         customerName: deliveryInfo.name,
         customerAge: parseInt(deliveryInfo.age),
         customerPhone: deliveryInfo.phone,
@@ -232,9 +231,8 @@ export default function CartPage() {
         createdAt: serverTimestamp()
       })
 
-      console.log('✅ Order saved to Firebase')
       clearCart();
-      clearDeliveryInfo(); // Clear delivery info after successful order
+      clearDeliveryInfo();
       navigate('/order-success', { 
         state: { 
           orderId: `order_${Date.now()}`, 
@@ -246,13 +244,12 @@ export default function CartPage() {
       })
       
     } catch (error) {
-      console.error('🔥 Checkout error:', error)
+      console.error('Checkout error:', error)
       alert(t('checkoutFailed') + ': ' + (error.message || t('tryAgain')))
       setIsProcessing(false)
     }
   }
 
-  // Enhanced quantity update with stock validation
   const handleQuantityUpdate = async (item, newQuantity) => {
     if (newQuantity < 1) {
       removeFromCart(item.id)
@@ -263,11 +260,8 @@ export default function CartPage() {
     const availableStock = product?.stock || 0
     
     setIsUpdating(prev => ({ ...prev, [item.id]: true }))
-    
-    // Optimistic update
     updateQuantity(item.id, newQuantity, availableStock)
     
-    // Check for errors after update
     if (availableStock > 0 && newQuantity > availableStock) {
       setStockErrors(prev => ({
         ...prev,
@@ -291,75 +285,90 @@ export default function CartPage() {
     }, 300)
   }
 
+  // Enhanced color scheme
   const colors = {
     light: {
-      primary: '#3E2723',
-      secondary: '#D4A017',
-      background: '#F8F4F0',
-      card: '#FCFAF8',
-      textDark: '#2E1B1B',
-      textLight: '#6B5E57',
-      success: '#8BC34A',
-      danger: '#EF4444',
-      warning: '#F59E0B',
-      border: '#E8DDD4'
+      primary: '#2C1810',
+      secondary: '#D4A574',
+      accent: '#E8B4A0',
+      background: '#FAFAF8',
+      surface: '#FFFFFF',
+      card: '#FCFBF9',
+      textDark: '#1A1410',
+      textMuted: '#8B7D73',
+      success: '#6B9E5F',
+      danger: '#C84B31',
+      warning: '#E8A840',
+      border: '#E8DDD4',
+      overlay: 'rgba(44, 24, 16, 0.05)'
     },
     dark: {
-      primary: '#2E1B1B',
-      secondary: '#D4A017',
-      background: '#1A1412',
-      card: '#2E1B1B',
-      textDark: '#F8F4F0',
-      textLight: '#C4B5AD',
-      success: '#8BC34A',
-      danger: '#EF4444',
-      warning: '#F59E0B',
-      border: '#3E2723'
+      primary: '#E8B4A0',
+      secondary: '#D4A574',
+      accent: '#C49080',
+      background: '#0F0E0C',
+      surface: '#1A1410',
+      card: '#2C1810',
+      textDark: '#F5F3F0',
+      textMuted: '#A8968B',
+      success: '#8FC178',
+      danger: '#E67052',
+      warning: '#F0B956',
+      border: '#3E2723',
+      overlay: 'rgba(232, 180, 160, 0.05)'
     }
   }
 
   const c = theme === 'light' ? colors.light : colors.dark
 
-  // Cart Error Display
+  // Cart Error Banner
   const CartErrorBanner = () => {
     if (!cartError && Object.keys(stockErrors).length === 0) return null
     
     return (
       <div style={{
-        padding: isMobile ? '12px 16px' : '16px 20px',
-        background: '#FEE2E2',
-        border: '2px solid #EF4444',
-        borderRadius: '12px',
-        marginBottom: '1.5rem',
-        color: '#991B1B',
-        animation: 'slideDown 0.3s ease'
+        padding: '16px 20px',
+        background: theme === 'light' ? '#FEF2F0' : '#4A2B24',
+        border: `2px solid ${c.danger}`,
+        borderRadius: '16px',
+        marginBottom: '2rem',
+        color: c.danger,
+        animation: 'slideDown 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
+        backdropFilter: 'blur(10px)'
       }}>
-        <h4 style={{ margin: '0 0 8px 0', fontSize: '1rem', fontWeight: '700' }}>⚠️ {t('stockIssuesDetected')}</h4>
-        {cartError && <p style={{ margin: '0 0 8px 0', fontSize: '0.9rem' }}>{cartError.message}</p>}
-        {Object.entries(stockErrors).map(([id, error]) => (
-          <p key={id} style={{ margin: '4px 0', fontSize: '0.85rem' }}>
-            • {items.find(i => i.id === id)?.name}: {error.message}
-          </p>
-        ))}
-        <button 
-          onClick={() => { clearError(); setStockErrors({}) }}
-          style={{
-            marginTop: '8px',
-            padding: '8px 16px',
-            background: '#EF4444',
-            color: 'white',
-            border: 'none',
-            borderRadius: '6px',
-            fontSize: '0.8rem',
-            cursor: 'pointer',
-            fontWeight: '700',
-            transition: 'all 0.2s ease'
-          }}
-          onMouseEnter={(e) => e.target.style.background = '#DC2626'}
-          onMouseLeave={(e) => e.target.style.background = '#EF4444'}
-        >
-          {t('dismiss')}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+          <span style={{ fontSize: '1.3rem', flexShrink: 0 }}>⚠️</span>
+          <div style={{ flex: 1 }}>
+            <h4 style={{ margin: '0 0 8px 0', fontSize: '1rem', fontWeight: '700' }}>
+              {t('stockIssuesDetected')}
+            </h4>
+            {cartError && <p style={{ margin: '0 0 8px 0', fontSize: '0.9rem', opacity: 0.9 }}>{cartError.message}</p>}
+            {Object.entries(stockErrors).map(([id, error]) => (
+              <p key={id} style={{ margin: '4px 0', fontSize: '0.85rem', opacity: 0.9 }}>
+                • {items.find(i => i.id === id)?.name}: {error.message}
+              </p>
+            ))}
+            <button 
+              onClick={() => { clearError(); setStockErrors({}) }}
+              style={{
+                marginTop: '12px',
+                padding: '8px 16px',
+                background: c.danger,
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '0.8rem',
+                cursor: 'pointer',
+                fontWeight: '700',
+                transition: 'all 0.3s ease'
+              }}
+              onMouseEnter={(e) => e.target.style.transform = 'translateY(-2px)'}
+              onMouseLeave={(e) => e.target.style.transform = 'translateY(0)'}
+            >
+              {t('dismiss')}
+            </button>
+          </div>
+        </div>
       </div>
     )
   }
@@ -367,70 +376,90 @@ export default function CartPage() {
   // Delivery Info Form Component
   const DeliveryInfoForm = () => (
     <div style={{ 
-      background: '#f8f9fa', 
-      padding: '2rem', 
-      borderRadius: '12px',
-      border: '1px solid #dee2e6',
-      marginBottom: '2rem'
+      background: c.card,
+      padding: '2.5rem',
+      borderRadius: '20px',
+      border: `2px solid ${c.border}`,
+      marginBottom: '2rem',
+      boxShadow: `0 8px 24px ${c.overlay}`
     }}>
       <h3 style={{ 
-        marginBottom: '1.5rem', 
-        color: '#2c3e50',
-        fontWeight: '700'
+        marginBottom: '2rem', 
+        color: c.textDark,
+        fontWeight: '800',
+        fontSize: '1.3rem',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px'
       }}>
-        📍 {t('deliveryInformation')}
+        <span style={{ fontSize: '1.5rem' }}>📍</span>
+        {t('deliveryInformation')}
       </h3>
       
       <form onSubmit={handleSaveDeliveryInfo}>
-        {/* Name */}
-        <div style={{ marginBottom: '1rem' }}>
-          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600' }}>
-            {t('fullName')} *
-          </label>
-          <input
-            type="text"
-            name="name"
-            value={deliveryFormData.name}
-            onChange={handleDeliveryInputChange}
-            placeholder={t('enterFullName')}
-            style={{
-              width: '100%',
-              padding: '0.75rem',
-              border: '1px solid #ced4da',
-              borderRadius: '6px',
-              fontSize: '1rem'
-            }}
-          />
-          {deliveryFormErrors.name && <span style={{ color: '#dc3545', fontSize: '0.875rem' }}>{deliveryFormErrors.name}</span>}
-        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
+          {/* Name */}
+          <div>
+            <label style={{ display: 'block', marginBottom: '0.75rem', fontWeight: '700', fontSize: '0.95rem', color: c.textDark }}>
+              {t('fullName')} *
+            </label>
+            <input
+              type="text"
+              name="name"
+              value={deliveryFormData.name}
+              onChange={handleDeliveryInputChange}
+              placeholder={t('enterFullName')}
+              style={{
+                width: '100%',
+                padding: '12px 16px',
+                border: `2px solid ${deliveryFormErrors.name ? c.danger : c.border}`,
+                borderRadius: '12px',
+                fontSize: '1rem',
+                background: c.surface,
+                color: c.textDark,
+                transition: 'all 0.3s ease',
+                boxShadow: deliveryFormErrors.name ? `0 0 0 4px ${c.overlay}` : 'none'
+              }}
+              onFocus={(e) => e.target.style.borderColor = c.secondary}
+              onBlur={(e) => e.target.style.borderColor = deliveryFormErrors.name ? c.danger : c.border}
+            />
+            {deliveryFormErrors.name && <span style={{ color: c.danger, fontSize: '0.8rem', marginTop: '6px', display: 'block', fontWeight: '600' }}>✕ {deliveryFormErrors.name}</span>}
+          </div>
 
-        {/* Age */}
-        <div style={{ marginBottom: '1rem' }}>
-          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600' }}>
-            {t('age')} *
-          </label>
-          <input
-            type="number"
-            name="age"
-            value={deliveryFormData.age}
-            onChange={handleDeliveryInputChange}
-            min="13"
-            max="120"
-            placeholder={t('enterAge')}
-            style={{
-              width: '100%',
-              padding: '0.75rem',
-              border: '1px solid #ced4da',
-              borderRadius: '6px',
-              fontSize: '1rem'
-            }}
-          />
-          {deliveryFormErrors.age && <span style={{ color: '#dc3545', fontSize: '0.875rem' }}>{deliveryFormErrors.age}</span>}
+          {/* Age */}
+          <div>
+            <label style={{ display: 'block', marginBottom: '0.75rem', fontWeight: '700', fontSize: '0.95rem', color: c.textDark }}>
+              {t('age')} *
+            </label>
+            <input
+              type="number"
+              name="age"
+              value={deliveryFormData.age}
+              onChange={handleDeliveryInputChange}
+              min="13"
+              max="120"
+              placeholder={t('enterAge')}
+              style={{
+                width: '100%',
+                padding: '12px 16px',
+                border: `2px solid ${deliveryFormErrors.age ? c.danger : c.border}`,
+                borderRadius: '12px',
+                fontSize: '1rem',
+                background: c.surface,
+                color: c.textDark,
+                transition: 'all 0.3s ease',
+                boxShadow: deliveryFormErrors.age ? `0 0 0 4px ${c.overlay}` : 'none'
+              }}
+              onFocus={(e) => e.target.style.borderColor = c.secondary}
+              onBlur={(e) => e.target.style.borderColor = deliveryFormErrors.age ? c.danger : c.border}
+            />
+            {deliveryFormErrors.age && <span style={{ color: c.danger, fontSize: '0.8rem', marginTop: '6px', display: 'block', fontWeight: '600' }}>✕ {deliveryFormErrors.age}</span>}
+          </div>
         </div>
 
         {/* Phone */}
-        <div style={{ marginBottom: '1rem' }}>
-          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600' }}>
+        <div style={{ marginBottom: '1.5rem' }}>
+          <label style={{ display: 'block', marginBottom: '0.75rem', fontWeight: '700', fontSize: '0.95rem', color: c.textDark }}>
             {t('phoneNumber')} *
           </label>
           <input
@@ -441,18 +470,24 @@ export default function CartPage() {
             placeholder="+20 123 456 7890"
             style={{
               width: '100%',
-              padding: '0.75rem',
-              border: '1px solid #ced4da',
-              borderRadius: '6px',
-              fontSize: '1rem'
+              padding: '12px 16px',
+              border: `2px solid ${deliveryFormErrors.phone ? c.danger : c.border}`,
+              borderRadius: '12px',
+              fontSize: '1rem',
+              background: c.surface,
+              color: c.textDark,
+              transition: 'all 0.3s ease',
+              boxShadow: deliveryFormErrors.phone ? `0 0 0 4px ${c.overlay}` : 'none'
             }}
+            onFocus={(e) => e.target.style.borderColor = c.secondary}
+            onBlur={(e) => e.target.style.borderColor = deliveryFormErrors.phone ? c.danger : c.border}
           />
-          {deliveryFormErrors.phone && <span style={{ color: '#dc3545', fontSize: '0.875rem' }}>{deliveryFormErrors.phone}</span>}
+          {deliveryFormErrors.phone && <span style={{ color: c.danger, fontSize: '0.8rem', marginTop: '6px', display: 'block', fontWeight: '600' }}>✕ {deliveryFormErrors.phone}</span>}
         </div>
 
         {/* Address */}
-        <div style={{ marginBottom: '1rem' }}>
-          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600' }}>
+        <div style={{ marginBottom: '1.5rem' }}>
+          <label style={{ display: 'block', marginBottom: '0.75rem', fontWeight: '700', fontSize: '0.95rem', color: c.textDark }}>
             {t('detailedAddress')} *
           </label>
           <textarea
@@ -463,34 +498,42 @@ export default function CartPage() {
             rows="3"
             style={{
               width: '100%',
-              padding: '0.75rem',
-              border: '1px solid #ced4da',
-              borderRadius: '6px',
+              padding: '12px 16px',
+              border: `2px solid ${deliveryFormErrors.address ? c.danger : c.border}`,
+              borderRadius: '12px',
               fontSize: '1rem',
-              resize: 'vertical'
+              background: c.surface,
+              color: c.textDark,
+              transition: 'all 0.3s ease',
+              resize: 'vertical',
+              fontFamily: 'inherit',
+              boxShadow: deliveryFormErrors.address ? `0 0 0 4px ${c.overlay}` : 'none'
             }}
+            onFocus={(e) => e.target.style.borderColor = c.secondary}
+            onBlur={(e) => e.target.style.borderColor = deliveryFormErrors.address ? c.danger : c.border}
           />
-          {deliveryFormErrors.address && <span style={{ color: '#dc3545', fontSize: '0.875rem' }}>{deliveryFormErrors.address}</span>}
+          {deliveryFormErrors.address && <span style={{ color: c.danger, fontSize: '0.8rem', marginTop: '6px', display: 'block', fontWeight: '600' }}>✕ {deliveryFormErrors.address}</span>}
         </div>
 
         {/* Location Map */}
-        <div style={{ marginBottom: '1.5rem' }}>
-          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600' }}>
+        <div style={{ marginBottom: '2rem' }}>
+          <label style={{ display: 'block', marginBottom: '0.75rem', fontWeight: '700', fontSize: '0.95rem', color: c.textDark }}>
             {t('selectLocationOnMap')} *
           </label>
           
           {!isGeolocationSupported && (
-            <p style={{ color: '#ffc107', fontSize: '0.875rem', marginBottom: '0.5rem' }}>
+            <p style={{ color: c.warning, fontSize: '0.85rem', marginBottom: '1rem', padding: '12px', background: `${c.overlay}`, borderRadius: '8px', fontWeight: '600' }}>
               ⚠️ {t('geolocationNotSupported')}
             </p>
           )}
           
           <div style={{
-            height: '300px',
-            border: '1px solid #ced4da',
-            borderRadius: '6px',
+            height: '320px',
+            border: `2px solid ${deliveryFormErrors.location ? c.danger : c.border}`,
+            borderRadius: '16px',
             overflow: 'hidden',
-            position: 'relative'
+            position: 'relative',
+            boxShadow: `0 4px 12px ${c.overlay}`
           }}>
             {mapCenter ? (
               <iframe
@@ -508,35 +551,46 @@ export default function CartPage() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 height: '100%',
-                backgroundColor: '#e9ecef'
+                backgroundColor: c.overlay,
+                flexDirection: 'column',
+                gap: '10px'
               }}>
-                <span>📍 {t('loadingMap')}...</span>
+                <span style={{ fontSize: '2rem' }}>📍</span>
+                <span style={{ color: c.textMuted, fontWeight: '600' }}>{t('loadingMap')}...</span>
               </div>
             )}
           </div>
           
-          {deliveryFormErrors.location && <span style={{ color: '#dc3545', fontSize: '0.875rem' }}>{deliveryFormErrors.location}</span>}
-          
-          <p style={{ fontSize: '0.875rem', color: '#6c757d', marginTop: '0.5rem' }}>
-            {t('clickMapToSelectLocation')}
-          </p>
+          {deliveryFormErrors.location && <span style={{ color: c.danger, fontSize: '0.8rem', marginTop: '6px', display: 'block', fontWeight: '600' }}>✕ {deliveryFormErrors.location}</span>}
         </div>
 
         <button
           type="submit"
           style={{
             width: '100%',
-            padding: '0.75rem',
-            background: '#28a745',
+            padding: '14px 24px',
+            background: `linear-gradient(135deg, ${c.success} 0%, ${c.success}dd 100%)`,
             color: 'white',
             border: 'none',
-            borderRadius: '6px',
-            fontSize: '1rem',
-            fontWeight: '700',
-            cursor: 'pointer'
+            borderRadius: '12px',
+            fontSize: '1.05rem',
+            fontWeight: '800',
+            cursor: 'pointer',
+            transition: 'all 0.3s ease',
+            boxShadow: `0 4px 12px ${c.overlay}`,
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px'
+          }}
+          onMouseEnter={(e) => {
+            e.target.style.transform = 'translateY(-2px)'
+            e.target.style.boxShadow = `0 8px 24px ${c.overlay}`
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.transform = 'translateY(0)'
+            e.target.style.boxShadow = `0 4px 12px ${c.overlay}`
           }}
         >
-          {t('saveDeliveryInfo')}
+          ✓ {t('saveDeliveryInfo')}
         </button>
       </form>
     </div>
@@ -545,8 +599,7 @@ export default function CartPage() {
   if (totalItems === 0) {
     return (
       <div style={{ 
-        padding: isMobile ? '2rem 1rem' : '3rem 2rem',
-        textAlign: 'center', 
+        padding: isMobile ? '2rem 1rem' : '4rem 2rem',
         background: c.background,
         minHeight: '100vh',
         display: 'flex',
@@ -554,41 +607,47 @@ export default function CartPage() {
         alignItems: 'center',
         justifyContent: 'center'
       }}>
-        <div style={{ fontSize: isMobile ? '5rem' : '6rem', marginBottom: '1.5rem', opacity: 0.6 }}>🛒</div>
+        <div style={{ fontSize: isMobile ? '6rem' : '8rem', marginBottom: '2rem', opacity: 0.3, animation: 'float 3s ease-in-out infinite' }}>🛒</div>
         <h2 style={{ 
-          fontSize: isMobile ? '1.5rem' : '2rem', 
+          fontSize: isMobile ? '1.75rem' : '2.5rem', 
           marginBottom: '1rem', 
           color: c.textDark,
-          fontWeight: '700'
+          fontWeight: '900',
+          textAlign: 'center'
         }}>
           {t('emptyCart')}
         </h2>
         <p style={{
-          fontSize: '1rem',
-          color: c.textLight,
-          marginBottom: '2rem'
+          fontSize: '1.05rem',
+          color: c.textMuted,
+          marginBottom: '3rem',
+          maxWidth: '500px',
+          textAlign: 'center',
+          lineHeight: 1.6
         }}>
           {t('browseOurCollectionAndAddSomeItems')}
         </p>
         <button onClick={() => navigate('/home')} style={{
-          padding: '14px 40px',
-          background: `linear-gradient(135deg, ${c.secondary} 0%, #B8860B 100%)`,
+          padding: '16px 48px',
+          background: `linear-gradient(135deg, ${c.secondary} 0%, ${c.accent} 100%)`,
           color: '#FFF',
           border: 'none',
-          borderRadius: '10px',
-          fontWeight: '700',
-          fontSize: '1rem',
+          borderRadius: '14px',
+          fontWeight: '800',
+          fontSize: '1.1rem',
           cursor: 'pointer',
-          boxShadow: '0 4px 12px rgba(212, 160, 23, 0.3)',
-          transition: 'all 0.3s ease'
+          boxShadow: `0 8px 24px rgba(212, 160, 23, 0.25)`,
+          transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+          textTransform: 'uppercase',
+          letterSpacing: '1px'
         }}
         onMouseEnter={(e) => {
-          e.target.style.transform = 'translateY(-2px)'
-          e.target.style.boxShadow = '0 6px 16px rgba(212, 160, 23, 0.5)'
+          e.target.style.transform = 'translateY(-4px)'
+          e.target.style.boxShadow = `0 12px 32px rgba(212, 160, 23, 0.4)`
         }}
         onMouseLeave={(e) => {
           e.target.style.transform = 'translateY(0)'
-          e.target.style.boxShadow = '0 4px 12px rgba(212, 160, 23, 0.3)'
+          e.target.style.boxShadow = `0 8px 24px rgba(212, 160, 23, 0.25)`
         }}
         >
           🛍️ {t('continueShopping')}
@@ -604,74 +663,76 @@ export default function CartPage() {
       minHeight: '100vh'
     }}>
       <div style={{ 
-        maxWidth: '1200px', 
+        maxWidth: '1400px', 
         margin: '0 auto', 
-        paddingTop: isMobile ? '2rem' : '3rem' 
+        paddingTop: isMobile ? '1rem' : '2rem' 
       }}>
-        {/* Header with Back Button */}
+        {/* Header */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: isMobile ? '1.5rem' : '2rem',
+          marginBottom: '3rem',
           gap: '16px',
           flexWrap: isMobile ? 'wrap' : 'nowrap'
         }}>
           <button
             onClick={() => navigate('/home')}
             style={{
-              background: `linear-gradient(135deg, ${c.primary}15, ${c.primary}05)`,
-              border: `2px solid ${c.primary}`,
-              color: c.primary,
+              background: c.card,
+              border: `2px solid ${c.border}`,
+              color: c.textDark,
               cursor: 'pointer',
-              fontSize: isMobile ? '0.8rem' : '0.95rem',
+              fontSize: isMobile ? '0.85rem' : '0.95rem',
               fontWeight: '700',
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
-              padding: isMobile ? '10px 14px' : '12px 24px',
-              borderRadius: '10px',
+              padding: isMobile ? '10px 16px' : '12px 28px',
+              borderRadius: '12px',
               transition: 'all 0.3s ease',
               whiteSpace: 'nowrap',
               flexShrink: 0
             }}
             onMouseEnter={(e) => {
-              if (windowWidth >= 768) {
+              if (!isMobile) {
                 e.currentTarget.style.background = c.primary
-                e.currentTarget.style.color = '#FFFFFF'
+                e.currentTarget.style.color = 'white'
                 e.currentTarget.style.transform = 'translateX(-6px)'
               }
             }}
             onMouseLeave={(e) => {
-              if (windowWidth >= 768) {
-                e.currentTarget.style.background = `linear-gradient(135deg, ${c.primary}15, ${c.primary}05)`
-                e.currentTarget.style.color = c.primary
+              if (!isMobile) {
+                e.currentTarget.style.background = c.card
+                e.currentTarget.style.color = c.textDark
                 e.currentTarget.style.transform = 'translateX(0)'
               }
             }}
           >
-            <span style={{ fontSize: '1.1rem' }}>←</span>
+            <span style={{ fontSize: '1.3rem' }}>←</span>
             {!isMobile && t('backToProducts')}
-            {isMobile && 'Back'}
           </button>
 
           <h1 style={{ 
-            fontSize: isMobile ? '1.4rem' : '2.2rem',
-            fontWeight: '800',
+            fontSize: isMobile ? '1.6rem' : '2.8rem',
+            fontWeight: '900',
             color: c.textDark,
             margin: 0,
             display: 'flex',
             alignItems: 'center',
-            gap: '12px',
-            flex: isMobile ? 1 : 'auto'
+            gap: '16px',
+            flex: isMobile ? 1 : 'auto',
+            letterSpacing: '-1px'
           }}>
-            🛒 {t('cart')} <span style={{
-              fontSize: isMobile ? '0.85rem' : '1rem',
-              fontWeight: '700',
+            🛒 {t('cart')} 
+            <span style={{
+              fontSize: isMobile ? '1rem' : '1.3rem',
+              fontWeight: '800',
               color: c.secondary,
-              background: c.background,
-              padding: '4px 12px',
-              borderRadius: '20px'
+              background: `linear-gradient(135deg, ${c.secondary}15, ${c.secondary}05)`,
+              padding: '8px 16px',
+              borderRadius: '24px',
+              border: `2px solid ${c.secondary}`
             }}>
               {totalItems}
             </span>
@@ -682,12 +743,12 @@ export default function CartPage() {
 
         <div style={{ 
           display: 'grid',
-          gridTemplateColumns: isMobile ? '1fr' : '1fr 380px',
-          gap: '2rem'
+          gridTemplateColumns: isMobile ? '1fr' : '1fr 420px',
+          gap: '2.5rem'
         }}>
-          {/* Cart Items - Main Column */}
+          {/* Cart Items */}
           {items.length > 0 && (
-            <div style={{ marginBottom: '2rem' }}>
+            <div>
               {items.map((item, idx) => {
                 const product = productDetails[item.id]
                 const stockError = stockErrors[item.id]
@@ -695,36 +756,42 @@ export default function CartPage() {
                 const isLowStock = product && product.stock > 0 && product.stock < 10
                 const canIncrease = product && item.quantity < product.stock
                 const isExpanded = expandedItem === item.id
+                const isHovered = hoveredItem === item.id
                 
                 return (
                   <div 
                     key={item.id} 
                     style={{ 
-                      padding: isMobile ? '1rem' : '1.5rem',
+                      padding: isMobile ? '1.25rem' : '1.75rem',
                       backgroundColor: c.card,
-                      borderRadius: '12px',
-                      marginBottom: '1rem',
+                      borderRadius: '16px',
+                      marginBottom: '1.5rem',
                       border: `2px solid ${stockError ? c.danger : (isOutOfStock ? c.danger : c.border)}`,
                       display: 'grid',
-                      gridTemplateColumns: isSmallMobile ? '1fr' : '100px 1fr',
-                      gap: '1rem',
+                      gridTemplateColumns: isSmallMobile ? '1fr' : '120px 1fr',
+                      gap: '1.5rem',
                       position: 'relative',
                       overflow: 'hidden',
-                      opacity: isOutOfStock ? 0.85 : 1,
-                      transition: 'all 0.3s ease',
-                      animation: `slideDown 0.3s ease ${idx * 0.05}s both`
+                      opacity: isOutOfStock ? 0.8 : 1,
+                      transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                      transform: isHovered ? 'translateY(-4px)' : 'translateY(0)',
+                      boxShadow: isHovered ? `0 12px 32px ${c.overlay}` : `0 4px 12px ${c.overlay}`,
+                      animation: `slideDown 0.4s ease-out ${idx * 0.05}s both`
                     }}
+                    onMouseEnter={() => setHoveredItem(item.id)}
+                    onMouseLeave={() => setHoveredItem(null)}
                   >
                     {/* Product Image */}
                     <div style={{
-                      width: isSmallMobile ? '100%' : '100px',
-                      height: isSmallMobile ? '180px' : '100px',
-                      borderRadius: '10px',
+                      width: isSmallMobile ? '100%' : '120px',
+                      height: isSmallMobile ? '200px' : '120px',
+                      borderRadius: '12px',
                       overflow: 'hidden',
                       flexShrink: 0,
                       position: 'relative',
-                      background: c.background,
-                      cursor: 'pointer'
+                      background: c.overlay,
+                      cursor: 'pointer',
+                      border: `2px solid ${c.border}`
                     }}
                     onClick={() => navigate(`/product/${item.id}`)}
                     >
@@ -736,8 +803,8 @@ export default function CartPage() {
                             width: '100%',
                             height: '100%',
                             objectFit: 'cover',
-                            filter: isOutOfStock ? 'grayscale(0.7)' : 'none',
-                            transition: 'transform 0.3s ease'
+                            filter: isOutOfStock ? 'grayscale(0.8) opacity(0.6)' : 'none',
+                            transition: 'transform 0.4s ease'
                           }}
                         />
                       ) : (
@@ -747,8 +814,8 @@ export default function CartPage() {
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          fontSize: '2.5rem',
-                          background: c.background
+                          fontSize: '3rem',
+                          background: c.overlay
                         }}>
                           🍫
                         </div>
@@ -758,16 +825,17 @@ export default function CartPage() {
                         <div style={{
                           position: 'absolute',
                           inset: 0,
-                          background: 'rgba(0,0,0,0.6)',
+                          background: 'rgba(0,0,0,0.7)',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
                           color: 'white',
-                          fontWeight: '800',
-                          fontSize: '0.65rem',
+                          fontWeight: '900',
+                          fontSize: '0.7rem',
                           textTransform: 'uppercase',
                           textAlign: 'center',
-                          padding: '4px'
+                          padding: '8px',
+                          letterSpacing: '1px'
                         }}>
                           {t('outOfStock')}
                         </div>
@@ -781,16 +849,16 @@ export default function CartPage() {
                           display: 'flex',
                           justifyContent: 'space-between',
                           alignItems: 'flex-start',
-                          marginBottom: '0.5rem',
-                          gap: '0.5rem'
+                          marginBottom: '0.75rem',
+                          gap: '0.75rem'
                         }}>
                           <h3 style={{ 
                             margin: 0, 
-                            color: isOutOfStock ? c.textLight : c.textDark,
-                            fontSize: isMobile ? '0.95rem' : '1.05rem',
+                            color: isOutOfStock ? c.textMuted : c.textDark,
+                            fontSize: isMobile ? '1.05rem' : '1.2rem',
                             textDecoration: isOutOfStock ? 'line-through' : 'none',
                             flex: 1,
-                            fontWeight: '700',
+                            fontWeight: '800',
                             cursor: 'pointer'
                           }}
                           onClick={() => navigate(`/product/${item.id}`)}
@@ -803,40 +871,47 @@ export default function CartPage() {
                               background: 'transparent',
                               border: 'none',
                               color: c.danger,
-                              fontSize: '1.3rem',
+                              fontSize: '1.5rem',
                               cursor: 'pointer',
-                              padding: '4px',
+                              padding: '6px',
                               lineHeight: 1,
-                              transition: 'all 0.2s ease'
+                              transition: 'all 0.3s ease',
+                              borderRadius: '6px'
                             }}
-                            onMouseEnter={(e) => e.target.style.transform = 'scale(1.2)'}
-                            onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
-                            aria-label={t('remove')}
+                            onMouseEnter={(e) => {
+                              e.target.style.transform = 'scale(1.3) rotate(10deg)'
+                              e.target.style.background = `${c.overlay}`
+                            }}
+                            onMouseLeave={(e) => {
+                              e.target.style.transform = 'scale(1) rotate(0deg)'
+                              e.target.style.background = 'transparent'
+                            }}
                           >
                             ✕
                           </button>
                         </div>
 
-                        {/* Price & Unit Price */}
+                        {/* Price */}
                         <div style={{ 
                           display: 'flex', 
                           alignItems: 'center', 
-                          gap: '8px',
-                          marginBottom: '0.5rem',
+                          gap: '12px',
+                          marginBottom: '1rem',
                           flexWrap: 'wrap'
                         }}>
                           <span style={{ 
                             color: c.secondary, 
-                            fontSize: '1.25rem', 
-                            fontWeight: '800' 
+                            fontSize: '1.4rem', 
+                            fontWeight: '900'
                           }}>
                             {(item.price * item.quantity).toFixed(2)} EGP
                           </span>
                           <span style={{ 
-                            color: c.textLight, 
-                            fontSize: '0.8rem' 
+                            color: c.textMuted, 
+                            fontSize: '0.85rem',
+                            fontWeight: '600'
                           }}>
-                            ({item.price.toFixed(2)} EGP {t('each')})
+                            @ {item.price.toFixed(2)} EGP {t('each')}
                           </span>
                         </div>
 
@@ -845,48 +920,48 @@ export default function CartPage() {
                           display: 'flex',
                           alignItems: 'center',
                           gap: '8px',
-                          marginBottom: '0.5rem',
-                          fontSize: '0.8rem',
-                          flexWrap: 'wrap'
+                          marginBottom: '1rem',
+                          fontSize: '0.85rem'
                         }}>
                           {isOutOfStock ? (
-                            <span style={{ color: c.danger, fontWeight: '600' }}>
+                            <span style={{ color: c.danger, fontWeight: '700' }}>
                               ❌ {t('outOfStock')}
                             </span>
                           ) : isLowStock ? (
-                            <span style={{ color: c.warning, fontWeight: '600' }}>
+                            <span style={{ color: c.warning, fontWeight: '700', display: 'flex', alignItems: 'center', gap: '4px' }}>
                               ⚡ {t('onlyLeft', { count: product.stock })}
                             </span>
                           ) : (
-                            <span style={{ color: c.success, fontWeight: '600' }}>
+                            <span style={{ color: c.success, fontWeight: '700', display: 'flex', alignItems: 'center', gap: '4px' }}>
                               ✓ {t('inStock', { count: product.stock })}
                             </span>
                           )}
                         </div>
 
-                        {/* Stock Error Message */}
+                        {/* Stock Error */}
                         {stockError && (
                           <div style={{
-                            padding: '8px 12px',
-                            background: '#FEE2E2',
-                            borderRadius: '6px',
-                            marginBottom: '0.5rem',
-                            color: '#DC2626',
-                            fontSize: '0.75rem',
-                            fontWeight: '600'
+                            padding: '10px 14px',
+                            background: `${c.danger}15`,
+                            borderLeft: `4px solid ${c.danger}`,
+                            borderRadius: '8px',
+                            marginBottom: '1rem',
+                            color: c.danger,
+                            fontSize: '0.8rem',
+                            fontWeight: '700'
                           }}>
                             ⚠️ {stockError.message}
                           </div>
                         )}
                       </div>
 
-                      {/* Flavors if available */}
+                      {/* Flavors */}
                       {product?.flavors && product.flavors.length > 0 && (
-                        <div style={{ marginBottom: '0.5rem', marginTop: '0.5rem' }}>
+                        <div style={{ marginBottom: '1rem', marginTop: '0.5rem' }}>
                           <button
                             onClick={() => setExpandedItem(isExpanded ? null : item.id)}
                             style={{
-                              fontSize: '0.75rem', 
+                              fontSize: '0.8rem', 
                               color: c.secondary,
                               background: 'transparent',
                               border: 'none',
@@ -902,19 +977,20 @@ export default function CartPage() {
                             <div style={{ 
                               display: 'flex',
                               flexWrap: 'wrap',
-                              gap: '6px',
-                              marginTop: '6px',
-                              paddingTop: '6px',
+                              gap: '8px',
+                              marginTop: '10px',
+                              paddingTop: '10px',
                               borderTop: `1px solid ${c.border}`
                             }}>
                               {product.flavors.map((flavor, idx) => (
                                 <span key={idx} style={{
-                                  background: c.background,
-                                  padding: '4px 10px',
+                                  background: c.overlay,
+                                  padding: '6px 12px',
                                   borderRadius: '12px',
                                   color: c.textDark,
-                                  fontWeight: '600',
-                                  fontSize: '0.75rem'
+                                  fontWeight: '700',
+                                  fontSize: '0.8rem',
+                                  border: `1px solid ${c.border}`
                                 }}>
                                   {flavor}
                                 </span>
@@ -928,84 +1004,100 @@ export default function CartPage() {
                       <div style={{ 
                         display: 'flex', 
                         alignItems: 'center', 
-                        gap: '0.75rem',
-                        flexWrap: 'wrap',
-                        marginTop: '0.5rem'
+                        gap: '12px',
+                        flexWrap: 'wrap'
                       }}>
                         <span style={{ 
-                          fontSize: '0.8rem', 
-                          color: c.textLight,
-                          fontWeight: '700'
+                          fontSize: '0.85rem', 
+                          color: c.textMuted,
+                          fontWeight: '700',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px'
                         }}>
-                          {t('qty')}
+                          Qty:
                         </span>
                         <div style={{ 
                           display: 'flex', 
                           alignItems: 'center', 
-                          gap: '0.5rem',
-                          background: c.background,
-                          padding: '4px',
-                          borderRadius: '8px',
-                          border: `1px solid ${c.border}`
+                          gap: '4px',
+                          background: c.overlay,
+                          padding: '6px',
+                          borderRadius: '10px',
+                          border: `2px solid ${c.border}`,
+                          transition: 'all 0.3s ease'
                         }}>
                           <button
                             onClick={() => handleQuantityUpdate(item, item.quantity - 1)}
                             disabled={isUpdating[item.id]}
                             style={{
-                              width: '32px',
-                              height: '32px',
-                              borderRadius: '6px',
+                              width: '36px',
+                              height: '36px',
+                              borderRadius: '8px',
                               border: 'none',
                               background: c.card,
                               color: c.textDark,
-                              fontWeight: '700',
+                              fontWeight: '800',
                               cursor: 'pointer',
-                              fontSize: '1rem',
+                              fontSize: '1.1rem',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
-                              opacity: isUpdating[item.id] ? 0.6 : 1,
-                              transition: 'all 0.2s ease'
+                              opacity: isUpdating[item.id] ? 0.5 : 1,
+                              transition: 'all 0.2s ease',
+                              border: `1px solid ${c.border}`
                             }}
+                            onMouseEnter={(e) => e.target.style.background = c.danger}
+                            onMouseLeave={(e) => e.target.style.background = c.card}
                           >−</button>
                           <span style={{ 
-                            fontWeight: '700', 
+                            fontWeight: '800', 
                             minWidth: '30px', 
                             textAlign: 'center',
                             color: c.textDark,
-                            fontSize: '0.9rem'
+                            fontSize: '1rem'
                           }}>
-                            {isUpdating[item.id] ? '...' : item.quantity}
+                            {isUpdating[item.id] ? '⟳' : item.quantity}
                           </span>
                           <button
                             onClick={() => handleQuantityUpdate(item, item.quantity + 1)}
                             disabled={!canIncrease || isUpdating[item.id] || isOutOfStock}
                             style={{
-                              width: '32px',
-                              height: '32px',
-                              borderRadius: '6px',
-                              border: 'none',
-                              background: !canIncrease || isOutOfStock ? '#E5E7EB' : c.card,
-                              color: !canIncrease || isOutOfStock ? '#9CA3AF' : c.textDark,
-                              fontWeight: '700',
+                              width: '36px',
+                              height: '36px',
+                              borderRadius: '8px',
+                              border: `1px solid ${(!canIncrease || isOutOfStock) ? c.border : c.border}`,
+                              background: (!canIncrease || isOutOfStock) ? c.overlay : c.card,
+                              color: (!canIncrease || isOutOfStock) ? c.textMuted : c.textDark,
+                              fontWeight: '800',
                               cursor: (!canIncrease || isOutOfStock) ? 'not-allowed' : 'pointer',
-                              fontSize: '1rem',
+                              fontSize: '1.1rem',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
                               transition: 'all 0.2s ease'
                             }}
-                            title={!canIncrease ? t('maxAvailable', { count: product?.stock }) : t('increaseQuantity')}
+                            onMouseEnter={(e) => {
+                              if (canIncrease && !isOutOfStock) {
+                                e.target.style.background = c.success
+                                e.target.style.color = 'white'
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              e.target.style.background = canIncrease && !isOutOfStock ? c.card : c.overlay
+                              e.target.style.color = canIncrease && !isOutOfStock ? c.textDark : c.textMuted
+                            }}
                           >+</button>
                         </div>
                         
                         {product && item.quantity >= product.stock && !isOutOfStock && (
                           <span style={{ 
-                            fontSize: '0.7rem', 
+                            fontSize: '0.75rem', 
                             color: c.warning,
-                            fontWeight: '700'
+                            fontWeight: '700',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.5px'
                           }}>
-                            {t('maxReached')}
+                            max reached
                           </span>
                         )}
                       </div>
@@ -1016,33 +1108,37 @@ export default function CartPage() {
             </div>
           )}
 
-          {/* Sidebar - Order Summary & Checkout */}
+          {/* Sidebar */}
           <div style={{
             display: 'flex',
             flexDirection: 'column',
-            gap: '1.5rem'
+            gap: '2rem'
           }}>
             {/* Delivery Info Form */}
             <DeliveryInfoForm />
 
             {/* Coupon Section */}
             <div style={{
-              padding: '1.5rem',
+              padding: '2rem',
               background: c.card,
-              borderRadius: '12px',
-              border: `2px solid ${c.border}`
+              borderRadius: '16px',
+              border: `2px solid ${c.border}`,
+              boxShadow: `0 4px 12px ${c.overlay}`
             }}>
               <h3 style={{
-                margin: '0 0 1rem 0',
-                fontSize: '1rem',
-                fontWeight: '700',
-                color: c.textDark
+                margin: '0 0 1.5rem 0',
+                fontSize: '1.05rem',
+                fontWeight: '800',
+                color: c.textDark,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
               }}>
                 🎟️ {t('haveCoupon')}
               </h3>
               <div style={{
                 display: 'flex',
-                gap: '8px'
+                gap: '10px'
               }}>
                 <input
                   type="text"
@@ -1052,28 +1148,41 @@ export default function CartPage() {
                   disabled={appliedCoupon}
                   style={{
                     flex: 1,
-                    padding: '10px 12px',
-                    border: `1px solid ${c.border}`,
-                    borderRadius: '8px',
-                    background: c.background,
+                    padding: '12px 16px',
+                    border: `2px solid ${c.border}`,
+                    borderRadius: '10px',
+                    background: c.surface,
                     color: c.textDark,
-                    fontSize: '0.9rem',
-                    fontWeight: '600'
+                    fontSize: '0.95rem',
+                    fontWeight: '600',
+                    transition: 'all 0.3s ease'
                   }}
+                  onFocus={(e) => e.target.style.borderColor = c.secondary}
+                  onBlur={(e) => e.target.style.borderColor = c.border}
                 />
                 <button
                   onClick={handleApplyCoupon}
                   disabled={appliedCoupon || !couponInput}
                   style={{
-                    padding: '10px 16px',
-                    background: (appliedCoupon || !couponInput) ? '#999' : c.success,
+                    padding: '12px 20px',
+                    background: (appliedCoupon || !couponInput) ? c.textMuted : c.success,
                     color: '#FFF',
                     border: 'none',
-                    borderRadius: '8px',
-                    fontWeight: '700',
+                    borderRadius: '10px',
+                    fontWeight: '800',
                     cursor: (appliedCoupon || !couponInput) ? 'not-allowed' : 'pointer',
-                    fontSize: '0.85rem',
-                    transition: 'all 0.2s ease'
+                    fontSize: '0.9rem',
+                    transition: 'all 0.3s ease',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!appliedCoupon && couponInput) {
+                      e.target.style.transform = 'translateY(-2px)'
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.transform = 'translateY(0)'
                   }}
                 >
                   {t('apply')}
@@ -1081,13 +1190,14 @@ export default function CartPage() {
               </div>
               {appliedCoupon && (
                 <div style={{
-                  marginTop: '0.5rem',
-                  padding: '8px 12px',
-                  background: '#D1FAE5',
-                  borderRadius: '6px',
-                  color: '#047857',
-                  fontSize: '0.85rem',
-                  fontWeight: '600',
+                  marginTop: '1rem',
+                  padding: '12px 16px',
+                  background: `${c.success}20`,
+                  borderLeft: `4px solid ${c.success}`,
+                  borderRadius: '10px',
+                  color: c.success,
+                  fontSize: '0.9rem',
+                  fontWeight: '700',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center'
@@ -1101,9 +1211,10 @@ export default function CartPage() {
                     style={{
                       background: 'transparent',
                       border: 'none',
-                      color: '#047857',
+                      color: c.success,
                       cursor: 'pointer',
-                      fontWeight: '700'
+                      fontWeight: '800',
+                      fontSize: '1.1rem'
                     }}
                   >
                     ✕
@@ -1115,30 +1226,33 @@ export default function CartPage() {
             {/* Order Summary */}
             {items.length > 0 && (
               <div style={{
-                padding: '1.5rem',
+                padding: '2rem',
                 background: c.card,
-                borderRadius: '12px',
+                borderRadius: '16px',
                 border: `2px solid ${c.secondary}40`,
                 position: 'sticky',
-                top: '100px'
+                top: '120px',
+                boxShadow: `0 8px 24px ${c.overlay}`
               }}>
                 <h3 style={{
-                  margin: '0 0 1rem 0',
-                  fontSize: '1.1rem',
-                  fontWeight: '700',
-                  color: c.textDark
+                  margin: '0 0 1.5rem 0',
+                  fontSize: '1.2rem',
+                  fontWeight: '800',
+                  color: c.textDark,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px'
                 }}>
                   {t('orderSummary')}
                 </h3>
 
-                {/* Summary Details */}
-                <div style={{ marginBottom: '1rem', borderBottom: `1px solid ${c.border}`, paddingBottom: '1rem' }}>
+                <div style={{ marginBottom: '1.5rem', borderBottom: `2px solid ${c.border}`, paddingBottom: '1.5rem' }}>
                   <div style={{ 
                     display: 'flex',
                     justifyContent: 'space-between',
-                    marginBottom: '0.5rem',
-                    color: c.textLight,
-                    fontSize: '0.9rem'
+                    marginBottom: '0.75rem',
+                    color: c.textMuted,
+                    fontSize: '0.95rem',
+                    fontWeight: '600'
                   }}>
                     <span>{t('subtotal')}</span>
                     <span>{totalPrice.toFixed(2)} EGP</span>
@@ -1147,10 +1261,10 @@ export default function CartPage() {
                     <div style={{ 
                       display: 'flex',
                       justifyContent: 'space-between',
-                      marginBottom: '0.5rem',
+                      marginBottom: '0.75rem',
                       color: c.success,
-                      fontSize: '0.9rem',
-                      fontWeight: '700'
+                      fontSize: '0.95rem',
+                      fontWeight: '800'
                     }}>
                       <span>💰 {t('discount')}</span>
                       <span>-{discountAmount.toFixed(2)} EGP</span>
@@ -1159,22 +1273,24 @@ export default function CartPage() {
                   <div style={{ 
                     display: 'flex',
                     justifyContent: 'space-between',
-                    marginBottom: '0.5rem',
-                    color: c.textLight,
-                    fontSize: '0.9rem'
+                    color: c.textMuted,
+                    fontSize: '0.95rem',
+                    fontWeight: '600'
                   }}>
                     <span>{t('shipping')}</span>
-                    <span style={{ color: c.success, fontWeight: '700' }}>{t('free')}</span>
+                    <span style={{ color: c.success, fontWeight: '800' }}>FREE</span>
                   </div>
                 </div>
 
                 <div style={{ 
                   display: 'flex',
                   justifyContent: 'space-between',
-                  fontSize: '1.3rem',
-                  fontWeight: '800',
+                  fontSize: '1.4rem',
+                  fontWeight: '900',
                   color: c.textDark,
-                  marginBottom: '1.5rem'
+                  marginBottom: '2rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px'
                 }}>
                   <span>{t('total')}:</span>
                   <span style={{ color: c.secondary }}>
@@ -1188,33 +1304,35 @@ export default function CartPage() {
                   disabled={isProcessing || Object.keys(stockErrors).length > 0 || !isDeliveryInfoValid}
                   style={{
                     width: '100%',
-                    padding: '14px',
+                    padding: '16px',
                     background: (Object.keys(stockErrors).length === 0 && !isProcessing && isDeliveryInfoValid)
-                      ? `linear-gradient(135deg, ${c.secondary} 0%, #B8860B 100%)`
-                      : '#9CA3AF',
+                      ? `linear-gradient(135deg, ${c.secondary} 0%, ${c.accent} 100%)`
+                      : c.textMuted,
                     color: 'white',
                     border: 'none',
-                    borderRadius: '10px',
-                    fontWeight: '700',
-                    fontSize: '1rem',
+                    borderRadius: '12px',
+                    fontWeight: '900',
+                    fontSize: '1.05rem',
                     cursor: (Object.keys(stockErrors).length === 0 && !isProcessing && isDeliveryInfoValid) ? 'pointer' : 'not-allowed',
-                    opacity: (Object.keys(stockErrors).length === 0 && !isProcessing && isDeliveryInfoValid) ? 1 : 0.7,
+                    opacity: (Object.keys(stockErrors).length === 0 && !isProcessing && isDeliveryInfoValid) ? 1 : 0.6,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: '10px',
-                    transition: 'all 0.3s ease',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                    transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                    boxShadow: `0 4px 12px ${c.overlay}`,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px'
                   }}
                   onMouseEnter={(e) => {
                     if ((Object.keys(stockErrors).length === 0 && !isProcessing && isDeliveryInfoValid)) {
-                      e.target.style.transform = 'translateY(-2px)'
-                      e.target.style.boxShadow = '0 6px 16px rgba(212, 160, 23, 0.3)'
+                      e.target.style.transform = 'translateY(-3px)'
+                      e.target.style.boxShadow = `0 8px 24px ${c.overlay}`
                     }
                   }}
                   onMouseLeave={(e) => {
                     e.target.style.transform = 'translateY(0)'
-                    e.target.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)'
+                    e.target.style.boxShadow = `0 4px 12px ${c.overlay}`
                   }}
                 >
                   {isProcessing ? (
@@ -1223,9 +1341,15 @@ export default function CartPage() {
                       {t('processing')}...
                     </>
                   ) : !isDeliveryInfoValid ? (
-                    '📝 ' + t('completeDeliveryInfo')
+                    <>
+                      <span>📝</span>
+                      {t('completeDeliveryInfo')}
+                    </>
                   ) : Object.keys(stockErrors).length > 0 ? (
-                    '❌ ' + t('resolveStockIssues')
+                    <>
+                      <span>❌</span>
+                      {t('resolveStockIssues')}
+                    </>
                   ) : (
                     <>
                       <span style={{ fontSize: '1.3rem' }}>💳</span>
@@ -1236,10 +1360,15 @@ export default function CartPage() {
 
                 {(!isDeliveryInfoValid || Object.keys(stockErrors).length > 0) && (
                   <p style={{
-                    marginTop: '12px',
+                    marginTop: '16px',
                     color: c.danger,
                     fontSize: '0.8rem',
-                    textAlign: 'center'
+                    textAlign: 'center',
+                    fontWeight: '700',
+                    background: `${c.danger}15`,
+                    padding: '12px',
+                    borderRadius: '8px',
+                    borderLeft: `4px solid ${c.danger}`
                   }}>
                     {(!isDeliveryInfoValid && Object.keys(stockErrors).length > 0) 
                       ? t('completeAllRequirements') 
@@ -1258,7 +1387,7 @@ export default function CartPage() {
         @keyframes slideDown {
           from {
             opacity: 0;
-            transform: translateY(-20px);
+            transform: translateY(-24px);
           }
           to {
             opacity: 1;
@@ -1266,9 +1395,21 @@ export default function CartPage() {
           }
         }
 
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.8; }
+        @keyframes float {
+          0%, 100% {
+            transform: translateY(0);
+          }
+          50% {
+            transform: translateY(-20px);
+          }
+        }
+
+        * {
+          box-sizing: border-box;
+        }
+
+        button:disabled {
+          cursor: not-allowed !important;
         }
       `}</style>
     </div>
