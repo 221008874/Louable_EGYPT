@@ -114,21 +114,22 @@ export default function CartPage() {
       console.log('💳 Processing payment with EGP...')
       
       // Create order in Firebase
-      await addDoc(collection(db, 'orders'), {
-        orderId: `order_${Date.now()}`,
-        items: items.map(item => ({
-          id: item.id,
-          name: item.name,
-          price: item.price,
-          quantity: item.quantity || 1
-        })),
-        totalPrice: finalPrice,
-        totalItems: items.length,
-        currency: 'EGP',
-        paymentMethod: 'Cash on Delivery',
-        status: 'pending',
-        createdAt: serverTimestamp()
-      })
+      // ✅ CORRECT - Save to EGP-specific collection
+await addDoc(collection(db, 'orders_egp'), {
+  orderId: `order_${Date.now()}`,
+  items: items.map(item => ({
+    id: item.id,
+    name: item.name,
+    price: item.price,
+    quantity: item.quantity || 1
+  })),
+  totalPrice: finalPrice,
+  totalItems: items.length,
+  currency: 'EGP',
+  paymentMethod: 'Cash on Delivery',
+  status: 'pending',
+  createdAt: serverTimestamp()
+})
 
       console.log('✅ Order saved to Firebase')
       clearCart()
