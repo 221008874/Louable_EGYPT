@@ -41,7 +41,11 @@ export default function CartPage() {
       
       for (const item of items) {
         try {
+<<<<<<< HEAD
           const docRef = doc(db, 'products_pi', item.id)
+=======
+          const docRef = doc(db, 'products_egp', item.id)
+>>>>>>> cf301406f27573cb10e806fc06ea3661983c91c1
           const docSnap = await getDoc(docRef)
           
           if (docSnap.exists()) {

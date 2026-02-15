@@ -73,7 +73,11 @@ export default function ProductDetail() {
 
     const fetchProduct = async () => {
       try {
+<<<<<<< HEAD
         const docRef = doc(db, 'products_pi', id)
+=======
+        const docRef = doc(db, 'products_egp', id)
+>>>>>>> cf301406f27573cb10e806fc06ea3661983c91c1
         const docSnap = await getDoc(docRef)
         if (docSnap.exists()) {
           const data = docSnap.data()
