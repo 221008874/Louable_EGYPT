@@ -443,7 +443,7 @@ export default function ProductCard({ product }) {
                 fontSize: '1.4rem',
                 fontWeight: '800'
               }}>
-                π {product.price?.toFixed(2)}
+                EGP {product.price?.toFixed(2)}
               </span>
               {product.originalPrice && product.originalPrice > product.price && (
                 <span style={{

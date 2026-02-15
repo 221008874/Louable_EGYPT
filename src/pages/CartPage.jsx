@@ -1,4 +1,4 @@
-// src/pages/CartPage.jsx
+// src/pages/CartPage.jsx - UPDATED WITH EGP CURRENCY
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCart } from '../context/CartContext'
@@ -13,20 +13,16 @@ export default function CartPage() {
   const { theme } = useTheme()
   const navigate = useNavigate()
   
-  const [piAuthenticated, setPiAuthenticated] = useState(false)
-  const [piAuthError, setPiAuthError] = useState(null)
-  const [piLoading, setPiLoading] = useState(true)
   const [isProcessing, setIsProcessing] = useState(false)
-  const [pendingPayment, setPendingPayment] = useState(null)
+  const [appliedCoupon, setAppliedCoupon] = useState(null)
+  const [couponInput, setCouponInput] = useState('')
+  const [expandedItem, setExpandedItem] = useState(null)
   
   // State for enhanced product display and stock validation
   const [productDetails, setProductDetails] = useState({})
   const [stockErrors, setStockErrors] = useState({})
   const [isUpdating, setIsUpdating] = useState({})
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024)
-  const [appliedCoupon, setAppliedCoupon] = useState(null)
-  const [couponInput, setCouponInput] = useState('')
-  const [expandedItem, setExpandedItem] = useState(null)
 
   const isMobile = windowWidth < 768
   const isSmallMobile = windowWidth < 480
@@ -45,7 +41,7 @@ export default function CartPage() {
       
       for (const item of items) {
         try {
-          const docRef = doc(db, 'products', item.id)
+          const docRef = doc(db, 'products_pi', item.id)
           const docSnap = await getDoc(docRef)
           
           if (docSnap.exists()) {
@@ -104,168 +100,7 @@ export default function CartPage() {
   const discountAmount = appliedCoupon ? totalPrice * appliedCoupon.discount : 0
   const finalPrice = totalPrice - discountAmount
 
-  const getApiUrl = () => {
-    return 'https://elhamd-industries.vercel.app/'; // Always Vercel, no spaces!
-  };
-
-  const apiUrl = getApiUrl();
-
-  const completePendingPayment = async (payment) => {
-    console.log('🔄 Auto-completing pending payment:', payment.identifier);
-    
-    try {
-      const txid = payment.transaction?.txid;
-      if (!txid) {
-        console.error('No txid in pending payment');
-        return false;
-      }
-
-      const response = await fetch(`${apiUrl}/api/pi/complete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          paymentId: payment.identifier,
-          txid: txid,
-          orderDetails: { items, totalPrice, totalItems }
-        })
-      });
-
-      const result = await response.json();
-      
-      if (!response.ok) {
-        if (result.details?.includes('already_completed')) {
-          console.log('✅ Payment already completed, treating as success');
-          await addDoc(collection(db, 'orders'), {
-            orderId: `order_${Date.now()}`,
-            paymentId: payment.identifier,
-            txid,
-            items: items.map(item => ({
-              id: item.id,
-              name: item.name,
-              price: item.price,
-              quantity: item.quantity || 1
-            })),
-            totalPrice: payment.amount,
-            totalItems: items.length,
-            currency: 'PI',
-            status: 'completed',
-            createdAt: serverTimestamp()
-          });
-          
-          setPendingPayment(null);
-          clearCart();
-          navigate('/order-success', {
-            state: { orderId: payment.identifier, txid, totalPrice: payment.amount, items }
-          });
-          return true;
-        }
-        
-        console.error('API error:', result);
-        return false;
-      }
-
-      console.log('✅ Pending payment completed');
-      await addDoc(collection(db, 'orders'), {
-        orderId: `order_${Date.now()}`,
-        paymentId: payment.identifier,
-        txid,
-        items: items.map(item => ({
-          id: item.id,
-          name: item.name,
-          price: item.price,
-          quantity: item.quantity || 1
-        })),
-        totalPrice: payment.amount,
-        totalItems: items.length,
-        currency: 'PI',
-        status: 'completed',
-        createdAt: serverTimestamp()
-      });
-      
-      setPendingPayment(null);
-      clearCart();
-      navigate('/order-success', {
-        state: { orderId: payment.identifier, txid, totalPrice: payment.amount, items }
-      });
-      return true;
-      
-    } catch (error) {
-      console.error('Error completing pending:', error);
-      return false;
-    }
-  };
-
-  // Pi authentication
-  useEffect(() => {
-    const authenticatePi = async () => {
-      try {
-        let attempts = 0
-        const maxAttempts = 50
-        
-        while (!window.Pi && attempts < maxAttempts) {
-          await new Promise(resolve => setTimeout(resolve, 100))
-          attempts++
-        }
-        
-        if (!window.Pi) {
-          setPiLoading(false)
-          setPiAuthError(t('piBrowserRequired'))
-          return
-        }
-
-        const scopes = ['username', 'payments']
-        
-        const onIncompletePaymentFound = async (payment) => {
-          console.log('⚠️ Incomplete payment:', payment.identifier);
-          setPendingPayment(payment);
-          
-          const completed = await completePendingPayment(payment);
-          
-          return payment;
-        };
-
-        const auth = await window.Pi.authenticate(scopes, onIncompletePaymentFound)
-        console.log('✅ Pi authenticated:', auth.user?.username)
-        setPiAuthenticated(true)
-        setPiAuthError(null)
-        
-      } catch (error) {
-        console.error('❌ Authentication failed:', error)
-        setPiAuthError(error.message || t('authFailed'))
-        setPiAuthenticated(false)
-      } finally {
-        setPiLoading(false)
-      }
-    }
-    authenticatePi()
-  }, [t])
-
-  const handleCompletePending = async () => {
-    if (!pendingPayment) return;
-    setIsProcessing(true);
-    await completePendingPayment(pendingPayment);
-    setIsProcessing(false);
-  };
-
   const handleCheckout = async () => {
-    if (!window.Pi) {
-      alert(t('piBrowserRequired'));
-      return;
-    }
-
-    if (isProcessing) {
-      alert(t('paymentInProgress'));
-      return;
-    }
-
-    if (pendingPayment) {
-      const shouldComplete = confirm(t('completePendingPayment'));
-      if (shouldComplete) {
-        await handleCompletePending();
-      }
-      return;
-    }
-
     // Validate stock before checkout
     const hasStockErrors = Object.keys(stockErrors).length > 0
     if (hasStockErrors) {
@@ -273,139 +108,45 @@ export default function CartPage() {
       return
     }
 
-    setIsProcessing(true);
+    setIsProcessing(true)
 
     try {
-      console.log('💳 Creating new payment...');
+      console.log('💳 Processing payment with EGP...')
       
-      const paymentData = {
-        amount: Number(finalPrice),
-        memo: `Louable Order - ${totalItems} items`,
-        metadata: {
-          orderItems: items.map(i => i.name).join(', '),
-          timestamp: Date.now()
-        }
-      };
+      // Create order in Firebase
+      await addDoc(collection(db, 'orders'), {
+        orderId: `order_${Date.now()}`,
+        items: items.map(item => ({
+          id: item.id,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity || 1
+        })),
+        totalPrice: finalPrice,
+        totalItems: items.length,
+        currency: 'EGP',
+        paymentMethod: 'Cash on Delivery',
+        status: 'pending',
+        createdAt: serverTimestamp()
+      })
 
-      console.log('💳 Payment data:', paymentData);
-
-      const callbacks = {
-        onReadyForServerApproval: async (paymentId) => {
-          console.log('🚀 onReadyForServerApproval called:', paymentId);
-          
-          try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 15000);
-
-            const response = await fetch(`${apiUrl}/api/pi/approve`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ paymentId }),
-              signal: controller.signal
-            });
-            
-            clearTimeout(timeoutId);
-
-            if (!response.ok) {
-              const error = await response.json();
-              throw new Error(error.error || `HTTP ${response.status}`);
-            }
-            
-            const result = await response.json();
-            console.log('✅ Server approval success:', result);
-            
-          } catch (error) {
-            console.error('💥 Approval error:', error);
-            alert(t('approvalFailed') + ': ' + error.message);
-            throw error;
-          }
-        },
-
-        onReadyForServerCompletion: async (paymentId, txid) => {
-          console.log('🚀 onReadyForServerCompletion called:', paymentId, txid);
-          
-          try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 15000);
-
-            const response = await fetch(`${apiUrl}/api/pi/complete`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ 
-                paymentId, 
-                txid,
-                orderDetails: { items, totalPrice: finalPrice, totalItems }
-              }),
-              signal: controller.signal
-            });
-
-            clearTimeout(timeoutId);
-
-            if (!response.ok) {
-              const error = await response.json();
-              throw new Error(error.error || 'Completion failed');
-            }
-
-            const result = await response.json();
-            console.log('✅ Server completion success:', result);
-
-            await addDoc(collection(db, 'orders'), {
-              orderId: `order_${Date.now()}`,
-              paymentId,
-              txid,
-              items: items.map(item => ({
-                id: item.id,
-                name: item.name,
-                price: item.price,
-                quantity: item.quantity || 1
-              })),
-              totalPrice: finalPrice,
-              totalItems,
-              currency: 'PI',
-              status: 'completed',
-              createdAt: serverTimestamp()
-            });
-
-            console.log('✅ Order saved to Firebase');
-            clearCart();
-            navigate('/order-success', { 
-              state: { orderId: paymentId, txid, totalPrice: finalPrice, items } 
-            });
-            
-          } catch (error) {
-            console.error('💥 Completion error:', error);
-            alert(t('paymentCompletedButSaveFailed') + ': ' + txid);
-            setIsProcessing(false);
-          }
-        },
-
-        onCancel: (paymentId) => {
-          console.log('❌ Payment cancelled:', paymentId);
-          setIsProcessing(false);
-          alert(t('paymentCancelled'));
-        },
-
-        onError: (error, payment) => {
-          console.error('💥 Payment error:', error, payment);
-          setIsProcessing(false);
-          
-          if (error.message?.includes('pending payment')) {
-            alert(t('pendingPaymentExists'));
-          } else {
-            alert(t('paymentFailed') + ': ' + (error.message || 'Unknown error'));
-          }
-        }
-      };
-
-      const payment = await window.Pi.createPayment(paymentData, callbacks);
-      console.log('💳 Payment created successfully:', payment?.identifier);
-
+      console.log('✅ Order saved to Firebase')
+      clearCart()
+      navigate('/order-success', { 
+        state: { 
+          orderId: `order_${Date.now()}`, 
+          txid: `TXN-${Date.now()}`, 
+          totalPrice: finalPrice, 
+          items 
+        } 
+      })
+      
     } catch (error) {
-      console.error('🔥 Checkout error:', error);
-      alert(t('checkoutFailed') + ': ' + (error.message || t('tryAgain')));
-      setIsProcessing(false);
+      console.error('🔥 Checkout error:', error)
+      alert(t('checkoutFailed') + ': ' + (error.message || t('tryAgain')))
+      setIsProcessing(false)
     }
-  };
+  }
 
   // Enhanced quantity update with stock validation
   const handleQuantityUpdate = async (item, newQuantity) => {
@@ -475,31 +216,6 @@ export default function CartPage() {
 
   const c = theme === 'light' ? colors.light : colors.dark
 
-  const AuthStatus = () => {
-    if (typeof window === 'undefined' || !window.Pi) return null
-    
-    return (
-      <div style={{
-        position: 'fixed',
-        top: '10px',
-        right: '10px',
-        padding: '10px 16px',
-        background: piAuthenticated ? '#4CAF50' : (piLoading ? '#FF9800' : '#FF5252'),
-        color: 'white',
-        borderRadius: '8px',
-        fontSize: '12px',
-        zIndex: 1000,
-        boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '6px',
-        fontWeight: '600'
-      }}>
-        {piLoading ? '⏳ ' + t('connecting') : (piAuthenticated ? '✅ ' + t('piConnected') : '❌ ' + t('piFailed'))}
-      </div>
-    )
-  }
-
   // Cart Error Display
   const CartErrorBanner = () => {
     if (!cartError && Object.keys(stockErrors).length === 0) return null
@@ -544,7 +260,7 @@ export default function CartPage() {
     )
   }
 
-  if (totalItems === 0 && !pendingPayment) {
+  if (totalItems === 0) {
     return (
       <div style={{ 
         padding: isMobile ? '2rem 1rem' : '3rem 2rem',
@@ -556,7 +272,6 @@ export default function CartPage() {
         alignItems: 'center',
         justifyContent: 'center'
       }}>
-        <AuthStatus />
         <div style={{ fontSize: isMobile ? '5rem' : '6rem', marginBottom: '1.5rem', opacity: 0.6 }}>🛒</div>
         <h2 style={{ 
           fontSize: isMobile ? '1.5rem' : '2rem', 
@@ -606,8 +321,6 @@ export default function CartPage() {
       background: c.background,
       minHeight: '100vh'
     }}>
-      <AuthStatus />
-      
       <div style={{ 
         maxWidth: '1200px', 
         margin: '0 auto', 
@@ -684,49 +397,6 @@ export default function CartPage() {
         </div>
 
         <CartErrorBanner />
-
-        {/* Pending Payment Alert */}
-        {pendingPayment && (
-          <div style={{
-            padding: isMobile ? '1rem' : '1.5rem',
-            background: '#FFF3CD',
-            border: '2px solid #FFC107',
-            borderRadius: '12px',
-            marginBottom: '2rem',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: '1rem',
-            animation: 'slideDown 0.3s ease'
-          }}>
-            <div>
-              <h3 style={{ margin: '0 0 0.5rem 0', color: '#856404', fontSize: isMobile ? '1rem' : '1.1rem', fontWeight: '700' }}>
-                ⚠️ {t('pendingPayment')}
-              </h3>
-              <p style={{ margin: 0, color: '#856404', fontSize: isMobile ? '0.9rem' : '1rem' }}>
-                {t('amount')}: π {pendingPayment.amount} | ID: {pendingPayment.identifier?.slice(0, 8)}...
-              </p>
-            </div>
-            <button
-              onClick={handleCompletePending}
-              disabled={isProcessing}
-              style={{
-                padding: isMobile ? '10px 16px' : '12px 24px',
-                background: isProcessing ? '#999' : '#FFC107',
-                color: '#000',
-                border: 'none',
-                borderRadius: '8px',
-                fontWeight: '700',
-                cursor: isProcessing ? 'not-allowed' : 'pointer',
-                fontSize: isMobile ? '0.9rem' : '1rem',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              {isProcessing ? t('processing') + '...' : t('completePayment')}
-            </button>
-          </div>
-        )}
 
         <div style={{ 
           display: 'grid',
@@ -878,13 +548,13 @@ export default function CartPage() {
                             fontSize: '1.25rem', 
                             fontWeight: '800' 
                           }}>
-                            π {(item.price * item.quantity).toFixed(2)}
+                            {(item.price * item.quantity).toFixed(2)} EGP
                           </span>
                           <span style={{ 
                             color: c.textLight, 
                             fontSize: '0.8rem' 
                           }}>
-                            (π {item.price.toFixed(2)} {t('each')})
+                            ({item.price.toFixed(2)} EGP {t('each')})
                           </span>
                         </div>
 
@@ -1070,7 +740,7 @@ export default function CartPage() {
             flexDirection: 'column',
             gap: '1.5rem'
           }}>
-            {/* Coupon Section - New Feature */}
+            {/* Coupon Section */}
             <div style={{
               padding: '1.5rem',
               background: c.card,
@@ -1158,7 +828,7 @@ export default function CartPage() {
             </div>
 
             {/* Order Summary */}
-            {(items.length > 0 || pendingPayment) && (
+            {items.length > 0 && (
               <div style={{
                 padding: '1.5rem',
                 background: c.card,
@@ -1186,7 +856,7 @@ export default function CartPage() {
                     fontSize: '0.9rem'
                   }}>
                     <span>{t('subtotal')}</span>
-                    <span>π {totalPrice.toFixed(2)}</span>
+                    <span>{totalPrice.toFixed(2)} EGP</span>
                   </div>
                   {discountAmount > 0 && (
                     <div style={{ 
@@ -1198,7 +868,7 @@ export default function CartPage() {
                       fontWeight: '700'
                     }}>
                       <span>💰 {t('discount')}</span>
-                      <span>-π {discountAmount.toFixed(2)}</span>
+                      <span>-{discountAmount.toFixed(2)} EGP</span>
                     </div>
                   )}
                   <div style={{ 
@@ -1223,18 +893,18 @@ export default function CartPage() {
                 }}>
                   <span>{t('total')}:</span>
                   <span style={{ color: c.secondary }}>
-                    π {(pendingPayment ? pendingPayment.amount : finalPrice).toFixed(2)}
+                    {finalPrice.toFixed(2)} EGP
                   </span>
                 </div>
 
                 {/* Checkout Button */}
                 <button
                   onClick={handleCheckout}
-                  disabled={!piAuthenticated || piLoading || isProcessing || pendingPayment || Object.keys(stockErrors).length > 0}
+                  disabled={isProcessing || Object.keys(stockErrors).length > 0}
                   style={{
                     width: '100%',
                     padding: '14px',
-                    background: (piAuthenticated && !piLoading && !isProcessing && !pendingPayment && Object.keys(stockErrors).length === 0)
+                    background: (Object.keys(stockErrors).length === 0 && !isProcessing)
                       ? `linear-gradient(135deg, ${c.secondary} 0%, #B8860B 100%)`
                       : '#9CA3AF',
                     color: 'white',
@@ -1242,8 +912,8 @@ export default function CartPage() {
                     borderRadius: '10px',
                     fontWeight: '700',
                     fontSize: '1rem',
-                    cursor: (piAuthenticated && !piLoading && !isProcessing && !pendingPayment && Object.keys(stockErrors).length === 0) ? 'pointer' : 'not-allowed',
-                    opacity: (piAuthenticated && !piLoading && !isProcessing && !pendingPayment && Object.keys(stockErrors).length === 0) ? 1 : 0.7,
+                    cursor: (Object.keys(stockErrors).length === 0 && !isProcessing) ? 'pointer' : 'not-allowed',
+                    opacity: (Object.keys(stockErrors).length === 0 && !isProcessing) ? 1 : 0.7,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -1252,7 +922,7 @@ export default function CartPage() {
                     boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
                   }}
                   onMouseEnter={(e) => {
-                    if ((piAuthenticated && !piLoading && !isProcessing && !pendingPayment && Object.keys(stockErrors).length === 0)) {
+                    if ((Object.keys(stockErrors).length === 0 && !isProcessing)) {
                       e.target.style.transform = 'translateY(-2px)'
                       e.target.style.boxShadow = '0 6px 16px rgba(212, 160, 23, 0.3)'
                     }
@@ -1267,32 +937,15 @@ export default function CartPage() {
                       <span>⏳</span>
                       {t('processing')}...
                     </>
-                  ) : piLoading ? (
-                    '⏳ ' + t('connectingToPi') + '...'
-                  ) : pendingPayment ? (
-                    '⚠️ ' + t('completePendingFirst')
                   ) : Object.keys(stockErrors).length > 0 ? (
                     '❌ ' + t('resolveStockIssues')
-                  ) : piAuthenticated ? (
-                    <>
-                      <span style={{ fontSize: '1.3rem' }}>π</span>
-                      {t('checkoutWithPi')}
-                    </>
                   ) : (
-                    '❌ ' + t('piNotConnected')
+                    <>
+                      <span style={{ fontSize: '1.3rem' }}>💳</span>
+                      {t('checkout')}
+                    </>
                   )}
                 </button>
-                
-                {piAuthError && (
-                  <p style={{
-                    marginTop: '12px',
-                    color: c.danger,
-                    fontSize: '0.8rem',
-                    textAlign: 'center'
-                  }}>
-                    ⚠️ {piAuthError}
-                  </p>
-                )}
 
                 {Object.keys(stockErrors).length > 0 && (
                   <p style={{
@@ -1322,32 +975,9 @@ export default function CartPage() {
           }
         }
 
-        @keyframes slideInBounce {
-          from {
-            opacity: 0;
-            transform: translateX(-50%) translateY(-50px);
-          }
-          to {
-            opacity: 1;
-            transform: translateX(-50%) translateY(0);
-          }
-        }
-
-        @keyframes slideOut {
-          to {
-            opacity: 0;
-            transform: translateX(-50%) translateY(-30px);
-          }
-        }
-
         @keyframes pulse {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.8; }
-        }
-
-        @keyframes bounce {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-10px); }
         }
       `}</style>
     </div>

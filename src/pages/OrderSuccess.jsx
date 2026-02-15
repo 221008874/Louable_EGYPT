@@ -1,4 +1,3 @@
-// src/pages/OrderSuccess.jsx
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useTheme } from '../context/ThemeContext'
 import { useLanguage } from '../context/LanguageContext'
@@ -12,7 +11,6 @@ export default function OrderSuccess() {
   const { orderId, txid, totalPrice, items } = location.state || {}
 
   const colors = {
-    
     light: {
       primary: '#3E2723',
       secondary: '#D4A017',
@@ -23,7 +21,6 @@ export default function OrderSuccess() {
       success: '#8BC34A',
       border: '#E8DDD4'
     },
-
     dark: {
       primary: '#2E1B1B',
       secondary: '#D4A017',
@@ -34,7 +31,6 @@ export default function OrderSuccess() {
       success: '#8BC34A',
       border: '#3E2723'
     }
-
   }
 
   const c = theme === 'light' ? colors.light : colors.dark
@@ -62,7 +58,7 @@ export default function OrderSuccess() {
         🎉
       </div>
       
-            <h1 style={{
+      <h1 style={{
         fontSize: '2.5rem',
         color: c.success,
         marginBottom: '1rem',
@@ -71,7 +67,7 @@ export default function OrderSuccess() {
         {t('orderConfirmed')}
       </h1>
       
-            <p style={{
+      <p style={{
         fontSize: '1.2rem',
         color: c.textLight,
         marginBottom: '2rem'
@@ -88,14 +84,14 @@ export default function OrderSuccess() {
         border: `2px solid ${c.border}`,
         marginBottom: '2rem'
       }}>
-               <div style={{ marginBottom: '1rem' }}>
+        <div style={{ marginBottom: '1rem' }}>
           <span style={{ color: c.textLight }}>{t('orderId')} </span>
           <strong style={{ color: c.textDark, fontFamily: 'monospace' }}>
             {orderId}
           </strong>
         </div>
         
-                <div style={{ marginBottom: '1rem' }}>
+        <div style={{ marginBottom: '1rem' }}>
           <span style={{ color: c.textLight }}>{t('transaction')} </span>
           <strong style={{ color: c.textDark, fontFamily: 'monospace', fontSize: '0.9rem' }}>
             {txid?.substring(0, 20)}...
@@ -108,11 +104,39 @@ export default function OrderSuccess() {
           borderRadius: '8px',
           marginTop: '1rem'
         }}>
-                   <span style={{ color: c.textLight }}>{t('totalPaid')} </span>
+          <span style={{ color: c.textLight }}>{t('totalPaid')} </span>
           <strong style={{ color: c.secondary, fontSize: '1.5rem' }}>
-            π {totalPrice?.toFixed(2)}
+            {totalPrice?.toFixed(2)} EGP
           </strong>
         </div>
+
+        {items && items.length > 0 && (
+          <div style={{
+            marginTop: '1.5rem',
+            paddingTop: '1.5rem',
+            borderTop: `1px solid ${c.border}`,
+            textAlign: 'left'
+          }}>
+            <h3 style={{ color: c.textDark, marginBottom: '1rem' }}>
+              {t('orderDetails')}
+            </h3>
+            {items.map((item, index) => (
+              <div key={index} style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                marginBottom: '0.5rem',
+                fontSize: '0.9rem'
+              }}>
+                <span style={{ color: c.textLight }}>
+                  {item.name} x {item.quantity || 1}
+                </span>
+                <span style={{ color: c.textDark, fontWeight: '700' }}>
+                  {((item.price || 0) * (item.quantity || 1)).toFixed(2)} EGP
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       
       <button
@@ -126,12 +150,13 @@ export default function OrderSuccess() {
           fontWeight: '700',
           fontSize: '1.1rem',
           cursor: 'pointer',
-          transition: 'transform 0.3s ease'
+          transition: 'transform 0.3s ease',
+          boxShadow: '0 4px 12px rgba(212, 160, 23, 0.3)'
         }}
         onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
         onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
       >
-                🛍️ {t('continueShopping')}
+        🛍️ {t('continueShopping')}
       </button>
       
       <style>{`

@@ -27,12 +27,7 @@ export default function ProductDetail() {
   const isMobile = windowWidth < 768
   const isSmallMobile = windowWidth < 480
 
-  useEffect(() => {
-    const handleResize = () => setWindowWidth(window.innerWidth)
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [])
-
+  // Define colors FIRST, before using them
   const colors = {
     light: {
       primary: '#3E2723',
@@ -65,6 +60,12 @@ export default function ProductDetail() {
   const c = theme === 'light' ? colors.light : colors.dark
 
   useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  useEffect(() => {
     if (!id) {
       navigate('/home')
       return
@@ -72,7 +73,7 @@ export default function ProductDetail() {
 
     const fetchProduct = async () => {
       try {
-        const docRef = doc(db, 'products', id)
+        const docRef = doc(db, 'products_pi', id)
         const docSnap = await getDoc(docRef)
         if (docSnap.exists()) {
           const data = docSnap.data()
@@ -510,7 +511,7 @@ export default function ProductDetail() {
                 )}
               </div>
 
-              {/* Price Display */}
+              {/* Price Display - UPDATED FOR EGP */}
               <div style={{
                 background: `linear-gradient(135deg, ${c.secondary}20, ${c.secondary}10)`,
                 padding: '16px 20px',
@@ -535,7 +536,7 @@ export default function ProductDetail() {
                   fontWeight: '800', 
                   margin: 0
                 }}>
-                  π {product.price.toFixed(2)}
+                  {product.price.toFixed(2)} EGP
                 </p>
               </div>
             </div>
@@ -853,10 +854,10 @@ export default function ProductDetail() {
                 </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '1.3rem' }}>🔒</span>
+                <span style={{ fontSize: '1.3rem' }}>💳</span>
                 <div style={{ fontSize: '0.8rem' }}>
                   <p style={{ margin: 0, fontWeight: '700', color: c.textDark }}>Secure Payment</p>
-                  <p style={{ margin: '2px 0 0 0', color: c.textLight }}>Pi Network</p>
+                  <p style={{ margin: '2px 0 0 0', color: c.textLight }}>Multiple Methods</p>
                 </div>
               </div>
             </div>
