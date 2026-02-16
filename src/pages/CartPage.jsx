@@ -33,6 +33,66 @@ export default function CartPage() {
     typeof window !== 'undefined' ? window.innerWidth : 1024
   )
   const [hoveredItem, setHoveredItem] = useState(null)
+  const [scrollY, setScrollY] = useState(0)
+  const [animatedCards, setAnimatedCards] = useState(new Set())
+
+  // ============ SHIPPING CONFIGURATION (LUXOR BASED) ============
+  const WAREHOUSE_LOCATION = { lat: 25.6872, lng: 32.6396 }
+
+  const SHIPPING_ZONES = {
+    local: { name: 'Luxor & Aswan', baseCost: 40, maxDistance: 220 },
+    upper: { name: 'Upper Egypt', baseCost: 60, maxDistance: 350 },
+    cairo: { name: 'Cairo & Giza', baseCost: 80, maxDistance: 550 },
+    delta: { name: 'Delta & Alexandria', baseCost: 90, maxDistance: 700 },
+    remote: { name: 'Red Sea & Sinai', baseCost: 110, maxDistance: 9999 }
+  }
+
+  const FREE_SHIPPING_THRESHOLD = 800
+
+  // ============ SHIPPING CALCULATION FUNCTIONS ============
+  const getDistanceFromLatLonInKm = (lat1, lng1, lat2, lng2) => {
+    const R = 6371
+    const dLat = (lat2 - lat1) * Math.PI / 180
+    const dLng = (lng2 - lng1) * Math.PI / 180
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLng / 2) * Math.sin(dLng / 2)
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    return R * c
+  }
+
+  const calculateShipping = useCallback(() => {
+    if (!deliveryInfo?.latitude || !deliveryInfo?.longitude) {
+      return { cost: 0, zone: 'Pending', isFree: false }
+    }
+
+    const distance = getDistanceFromLatLonInKm(
+      WAREHOUSE_LOCATION.lat,
+      WAREHOUSE_LOCATION.lng,
+      deliveryInfo.latitude,
+      deliveryInfo.longitude
+    )
+
+    let zone = SHIPPING_ZONES.remote
+    if (distance <= SHIPPING_ZONES.local.maxDistance) zone = SHIPPING_ZONES.local
+    else if (distance <= SHIPPING_ZONES.upper.maxDistance) zone = SHIPPING_ZONES.upper
+    else if (distance <= SHIPPING_ZONES.cairo.maxDistance) zone = SHIPPING_ZONES.cairo
+    else if (distance <= SHIPPING_ZONES.delta.maxDistance) zone = SHIPPING_ZONES.delta
+
+    let cost = zone.baseCost
+    const isFree = totalPrice >= FREE_SHIPPING_THRESHOLD
+    if (isFree) cost = 0
+
+    return {
+      cost,
+      zone: zone.name,
+      distance: Math.round(distance),
+      isFree
+    }
+  }, [deliveryInfo, totalPrice])
+
+  const shippingDetails = calculateShipping()
 
   // ============ DELIVERY FORM STATES ============
   const [formData, setFormData] = useState({
@@ -56,6 +116,15 @@ export default function CartPage() {
 
   const isMobile = windowWidth < 768
   const isSmallMobile = windowWidth < 480
+
+  // ============ SCROLL ANIMATIONS ============
+  useEffect(() => {
+    const handleScroll = () => {
+      setScrollY(window.scrollY)
+    }
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
 
   // ============ RESPONSIVE HANDLERS ============
   useEffect(() => {
@@ -202,7 +271,9 @@ export default function CartPage() {
   }, [couponInput, COUPONS, t])
 
   const discountAmount = appliedCoupon ? totalPrice * appliedCoupon.discount : 0
-  const finalPrice = totalPrice - discountAmount
+  const subtotal = totalPrice - discountAmount
+  const shippingCost = shippingDetails.cost
+  const finalPrice = subtotal + shippingCost
 
   // ============ CHECKOUT ============
   const handleCheckout = useCallback(async () => {
@@ -233,6 +304,7 @@ export default function CartPage() {
           longitude: deliveryInfo.longitude
         },
         coupon: appliedCoupon?.label || null,
+        shipping: shippingDetails,
         createdAt: serverTimestamp()
       })
 
@@ -244,7 +316,8 @@ export default function CartPage() {
           txid: `TXN-${Date.now()}`,
           totalPrice: finalPrice,
           items,
-          deliveryInfo
+          deliveryInfo,
+          shipping: shippingDetails
         }
       })
     } catch (error) {
@@ -252,7 +325,7 @@ export default function CartPage() {
       alert(t('checkoutFailed') + ': ' + (error.message || t('tryAgain')))
       setIsProcessing(false)
     }
-  }, [canCheckout, items, finalPrice, deliveryInfo, appliedCoupon, clearCart, clearDeliveryInfo, navigate, t])
+  }, [canCheckout, items, finalPrice, deliveryInfo, appliedCoupon, shippingDetails, clearCart, clearDeliveryInfo, navigate, t])
 
   const handleQuantityUpdate = useCallback(async (item, newQuantity) => {
     if (newQuantity < 1) {
@@ -342,7 +415,8 @@ export default function CartPage() {
         borderRadius: '16px',
         marginBottom: '2rem',
         color: c.danger,
-        animation: 'slideDown 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)'
+        animation: 'slideDown 0.6s cubic-bezier(0.23, 1, 0.320, 1)',
+        transform: `translateY(${scrollY * 0.05}px)`
       }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
           <span style={{ fontSize: '1.3rem', flexShrink: 0 }}>⚠️</span>
@@ -367,10 +441,16 @@ export default function CartPage() {
                 fontSize: '0.8rem',
                 cursor: 'pointer',
                 fontWeight: '700',
-                transition: 'all 0.3s ease'
+                transition: 'all 0.3s cubic-bezier(0.23, 1, 0.320, 1)'
               }}
-              onMouseEnter={(e) => e.target.style.opacity = '0.9'}
-              onMouseLeave={(e) => e.target.style.opacity = '1'}
+              onMouseEnter={(e) => {
+                e.target.style.opacity = '0.9'
+                e.target.style.transform = 'scale(1.05)'
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.opacity = '1'
+                e.target.style.transform = 'scale(1)'
+              }}
             >
               {t('dismiss')}
             </button>
@@ -392,13 +472,31 @@ export default function CartPage() {
         alignItems: 'center',
         justifyContent: 'center'
       }}>
-        <div style={{ fontSize: isMobile ? '6rem' : '8rem', marginBottom: '2rem', opacity: 0.3 }}>
+        <div style={{
+          fontSize: isMobile ? '6rem' : '8rem',
+          marginBottom: '2rem',
+          opacity: 0.3,
+          animation: 'bounce 3s ease-in-out infinite'
+        }}>
           🛒
         </div>
-        <h2 style={{ fontSize: isMobile ? '1.75rem' : '2.5rem', marginBottom: '1rem', color: c.textDark, fontWeight: '900', textAlign: 'center' }}>
+        <h2 style={{
+          fontSize: isMobile ? '1.75rem' : '2.5rem',
+          marginBottom: '1rem',
+          color: c.textDark,
+          fontWeight: '900',
+          textAlign: 'center',
+          animation: 'fadeInUp 0.8s ease-out'
+        }}>
           {t('emptyCart')}
         </h2>
-        <p style={{ color: c.textMuted, marginBottom: '2rem', maxWidth: '400px', textAlign: 'center' }}>
+        <p style={{
+          color: c.textMuted,
+          marginBottom: '2rem',
+          maxWidth: '400px',
+          textAlign: 'center',
+          animation: 'fadeInUp 1s ease-out 0.2s backwards'
+        }}>
           {t('browseOurCollectionAndAddSomeItems')}
         </p>
         <button
@@ -412,15 +510,16 @@ export default function CartPage() {
             fontWeight: '800',
             fontSize: '1.1rem',
             cursor: 'pointer',
-            transition: 'all 0.3s ease',
-            boxShadow: `0 8px 24px rgba(212, 160, 23, 0.25)`
+            transition: 'all 0.3s cubic-bezier(0.23, 1, 0.320, 1)',
+            boxShadow: `0 8px 24px rgba(212, 160, 23, 0.25)`,
+            animation: 'fadeInUp 1.2s ease-out 0.4s backwards'
           }}
           onMouseEnter={(e) => {
-            e.target.style.transform = 'translateY(-3px)'
+            e.target.style.transform = 'translateY(-4px) scale(1.05)'
             e.target.style.boxShadow = '0 12px 32px rgba(212, 160, 23, 0.4)'
           }}
           onMouseLeave={(e) => {
-            e.target.style.transform = 'translateY(0)'
+            e.target.style.transform = 'translateY(0) scale(1)'
             e.target.style.boxShadow = '0 8px 24px rgba(212, 160, 23, 0.25)'
           }}
         >
@@ -442,7 +541,8 @@ export default function CartPage() {
           justifyContent: 'space-between',
           marginBottom: '2rem',
           gap: '16px',
-          flexWrap: isMobile ? 'wrap' : 'nowrap'
+          flexWrap: isMobile ? 'wrap' : 'nowrap',
+          animation: 'fadeInDown 0.6s ease-out'
         }}>
           <button
             onClick={() => navigate('/home')}
@@ -454,7 +554,7 @@ export default function CartPage() {
               cursor: 'pointer',
               fontWeight: '700',
               color: c.textDark,
-              transition: 'all 0.3s ease',
+              transition: 'all 0.3s cubic-bezier(0.23, 1, 0.320, 1)',
               display: 'flex',
               alignItems: 'center',
               gap: '8px'
@@ -462,12 +562,12 @@ export default function CartPage() {
             onMouseEnter={(e) => {
               e.currentTarget.style.background = c.primary
               e.currentTarget.style.color = 'white'
-              e.currentTarget.style.transform = 'translateX(-4px)'
+              e.currentTarget.style.transform = 'translateX(-4px) scale(1.05)'
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = c.card
               e.currentTarget.style.color = c.textDark
-              e.currentTarget.style.transform = 'translateX(0)'
+              e.currentTarget.style.transform = 'translateX(0) scale(1)'
             }}
           >
             ← {!isMobile && t('back')}
@@ -493,7 +593,8 @@ export default function CartPage() {
               borderRadius: '24px',
               border: `2px solid ${c.secondary}`,
               minWidth: '50px',
-              textAlign: 'center'
+              textAlign: 'center',
+              animation: 'badgePulse 2s ease-in-out infinite'
             }}>
               {totalItems}
             </span>
@@ -534,9 +635,10 @@ export default function CartPage() {
                     gridTemplateColumns: isSmallMobile ? '1fr' : '130px 1fr',
                     gap: '1.5rem',
                     opacity: isOutOfStock ? 0.7 : 1,
-                    transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
-                    transform: hoveredItem === item.id ? 'translateY(-4px)' : 'translateY(0)',
-                    boxShadow: hoveredItem === item.id ? `0 12px 32px ${c.overlay}` : `0 4px 12px ${c.overlay}`
+                    transition: 'all 0.4s cubic-bezier(0.23, 1, 0.320, 1)',
+                    transform: hoveredItem === item.id ? 'translateY(-6px) scale(1.01)' : 'translateY(0) scale(1)',
+                    boxShadow: hoveredItem === item.id ? `0 16px 40px ${c.overlay}` : `0 4px 12px ${c.overlay}`,
+                    animation: `slideInItem 0.5s ease-out ${idx * 0.1}s backwards`
                   }}
                 >
                   {/* IMAGE */}
@@ -550,16 +652,16 @@ export default function CartPage() {
                       overflow: 'hidden',
                       cursor: 'pointer',
                       border: `2px solid ${c.border}`,
-                      transition: 'transform 0.3s ease',
+                      transition: 'transform 0.4s cubic-bezier(0.23, 1, 0.320, 1)',
                       flexShrink: 0
                     }}
                     onMouseEnter={(e) => {
                       if (!isMobile && product?.imageUrl) {
-                        e.currentTarget.style.transform = 'scale(1.05)'
+                        e.currentTarget.style.transform = 'scale(1.08) rotate(2deg)'
                       }
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = 'scale(1)'
+                      e.currentTarget.style.transform = 'scale(1) rotate(0deg)'
                     }}
                   >
                     {product?.imageUrl ? (
@@ -621,7 +723,8 @@ export default function CartPage() {
                             textOverflow: 'ellipsis',
                             display: '-webkit-box',
                             WebkitLineClamp: 2,
-                            WebkitBoxOrient: 'vertical'
+                            WebkitBoxOrient: 'vertical',
+                            transition: 'color 0.3s ease'
                           }}
                         >
                           {item.name}
@@ -635,11 +738,11 @@ export default function CartPage() {
                             fontSize: '1.5rem',
                             cursor: 'pointer',
                             padding: '4px',
-                            transition: 'all 0.3s ease',
+                            transition: 'all 0.3s cubic-bezier(0.23, 1, 0.320, 1)',
                             flexShrink: 0
                           }}
                           onMouseEnter={(e) => {
-                            e.target.style.transform = 'scale(1.3) rotate(10deg)'
+                            e.target.style.transform = 'scale(1.4) rotate(15deg)'
                           }}
                           onMouseLeave={(e) => {
                             e.target.style.transform = 'scale(1) rotate(0deg)'
@@ -696,7 +799,8 @@ export default function CartPage() {
                           color: c.danger,
                           fontSize: '0.8rem',
                           fontWeight: '700',
-                          marginBottom: '1rem'
+                          marginBottom: '1rem',
+                          animation: 'slideDown 0.5s ease-out'
                         }}>
                           ⚠️ {stockError.message}
                         </div>
@@ -715,7 +819,16 @@ export default function CartPage() {
                               fontSize: '0.9rem',
                               fontWeight: '700',
                               textDecoration: 'underline',
-                              padding: 0
+                              padding: 0,
+                              transition: 'all 0.3s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.target.style.color = c.accent
+                              e.target.style.letterSpacing = '0.5px'
+                            }}
+                            onMouseLeave={(e) => {
+                              e.target.style.color = c.secondary
+                              e.target.style.letterSpacing = '0px'
                             }}
                           >
                             🍬 {product.flavors.length} {t('flavors')} {expandedItem === item.id ? '▲' : '▼'}
@@ -725,7 +838,8 @@ export default function CartPage() {
                               display: 'flex',
                               flexWrap: 'wrap',
                               gap: '8px',
-                              marginTop: '10px'
+                              marginTop: '10px',
+                              animation: 'slideDown 0.4s ease-out'
                             }}>
                               {product.flavors.map((flavor, i) => (
                                 <span
@@ -737,7 +851,8 @@ export default function CartPage() {
                                     color: c.textDark,
                                     fontSize: '0.8rem',
                                     fontWeight: '700',
-                                    border: `1px solid ${c.border}`
+                                    border: `1px solid ${c.border}`,
+                                    animation: `fadeInScale 0.4s ease-out ${i * 0.08}s backwards`
                                   }}
                                 >
                                   {flavor}
@@ -767,7 +882,8 @@ export default function CartPage() {
                         background: c.overlay,
                         padding: '6px',
                         borderRadius: '10px',
-                        border: `2px solid ${c.border}`
+                        border: `2px solid ${c.border}`,
+                        transition: 'all 0.3s ease'
                       }}>
                         <button
                           onClick={() => handleQuantityUpdate(item, item.quantity - 1)}
@@ -853,7 +969,8 @@ export default function CartPage() {
                 padding: isMobile ? '1.5rem' : '1.75rem',
                 borderRadius: '16px',
                 border: `2px solid ${c.secondary}40`,
-                boxShadow: `0 8px 24px ${c.overlay}`
+                boxShadow: `0 8px 24px ${c.overlay}`,
+                animation: 'slideInRight 0.6s ease-out'
               }}>
                 <h3 style={{
                   margin: '0 0 1.5rem 0',
@@ -1054,7 +1171,7 @@ export default function CartPage() {
                     fontWeight: '800',
                     fontSize: '1rem',
                     cursor: 'pointer',
-                    transition: 'all 0.3s ease',
+                    transition: 'all 0.3s cubic-bezier(0.23, 1, 0.320, 1)',
                     textTransform: 'uppercase',
                     letterSpacing: '0.5px',
                     display: 'flex',
@@ -1063,10 +1180,12 @@ export default function CartPage() {
                     gap: '8px'
                   }}
                   onMouseEnter={(e) => {
-                    e.target.style.transform = 'translateY(-2px)'
+                    e.target.style.transform = 'translateY(-2px) scale(1.05)'
+                    e.target.style.boxShadow = `0 8px 20px ${c.success}50`
                   }}
                   onMouseLeave={(e) => {
-                    e.target.style.transform = 'translateY(0)'
+                    e.target.style.transform = 'translateY(0) scale(1)'
+                    e.target.style.boxShadow = 'none'
                   }}
                 >
                   <span>✓</span> {t('save')}
@@ -1081,7 +1200,8 @@ export default function CartPage() {
                 border: `2px solid ${c.success}40`,
                 padding: '1.5rem',
                 borderRadius: '14px',
-                boxShadow: `0 4px 12px ${c.overlay}`
+                boxShadow: `0 4px 12px ${c.overlay}`,
+                animation: 'slideInRight 0.6s ease-out'
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                   <h4 style={{ margin: 0, color: c.success, fontWeight: '800', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1096,7 +1216,14 @@ export default function CartPage() {
                       cursor: 'pointer',
                       fontSize: '0.85rem',
                       fontWeight: '700',
-                      textDecoration: 'underline'
+                      textDecoration: 'underline',
+                      transition: 'all 0.3s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.color = c.secondary
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.color = c.success
                     }}
                   >
                     {t('edit')}
@@ -1116,7 +1243,8 @@ export default function CartPage() {
               padding: '1.5rem',
               borderRadius: '14px',
               border: `2px solid ${c.border}`,
-              boxShadow: `0 4px 12px ${c.overlay}`
+              boxShadow: `0 4px 12px ${c.overlay}`,
+              animation: 'slideInRight 0.7s ease-out'
             }}>
               <h4 style={{ margin: '0 0 1rem 0', color: c.textDark, fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 🎟️ {t('coupon')}
@@ -1163,11 +1291,11 @@ export default function CartPage() {
                   }}
                   onMouseEnter={(e) => {
                     if (!appliedCoupon && couponInput.trim()) {
-                      e.target.style.transform = 'translateY(-2px)'
+                      e.target.style.transform = 'translateY(-2px) scale(1.08)'
                     }
                   }}
                   onMouseLeave={(e) => {
-                    e.target.style.transform = 'translateY(0)'
+                    e.target.style.transform = 'translateY(0) scale(1)'
                   }}
                 >
                   {t('apply')}
@@ -1184,7 +1312,8 @@ export default function CartPage() {
                   fontWeight: '700',
                   display: 'flex',
                   justifyContent: 'space-between',
-                  alignItems: 'center'
+                  alignItems: 'center',
+                  animation: 'slideDown 0.4s ease-out'
                 }}>
                   <span>✅ {appliedCoupon.label}</span>
                   <button
@@ -1195,8 +1324,11 @@ export default function CartPage() {
                       color: c.success,
                       cursor: 'pointer',
                       fontWeight: '800',
-                      fontSize: '1rem'
+                      fontSize: '1rem',
+                      transition: 'transform 0.2s ease'
                     }}
+                    onMouseEnter={(e) => e.target.style.transform = 'scale(1.3)'}
+                    onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
                   >
                     ✕
                   </button>
@@ -1210,12 +1342,12 @@ export default function CartPage() {
               padding: '1.5rem',
               borderRadius: '14px',
               border: `2px solid ${c.secondary}40`,
-              boxShadow: `0 8px 24px ${c.overlay}`
+              boxShadow: `0 8px 24px ${c.overlay}`,
+              animation: 'slideInRight 0.8s ease-out'
             }}>
               <h4 style={{ margin: '0 0 1.25rem 0', color: c.textDark, fontWeight: '800', fontSize: '1.1rem' }}>
                 💰 {t('orderSummary')}
               </h4>
-
               <div style={{
                 display: 'flex',
                 flexDirection: 'column',
@@ -1228,19 +1360,65 @@ export default function CartPage() {
                   <span>{t('subtotal')}</span>
                   <span>{totalPrice.toFixed(2)} EGP</span>
                 </div>
-
                 {discountAmount > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: c.success, fontSize: '0.9rem', fontWeight: '800' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: c.success, fontSize: '0.9rem', fontWeight: '800', animation: 'slideDown 0.4s ease-out' }}>
                     <span>💚 {t('discount')}</span>
                     <span>-{discountAmount.toFixed(2)} EGP</span>
                   </div>
                 )}
-
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: c.textMuted, fontSize: '0.9rem', fontWeight: '600' }}>
                   <span>{t('shipping')}</span>
-                  <span style={{ color: c.success, fontWeight: '800' }}>{t('free')}</span>
+                  <span style={{ 
+                    color: shippingDetails.isFree ? c.success : c.textDark, 
+                    fontWeight: '800',
+                    animation: shippingDetails.isFree ? 'badgePulse 2s ease-in-out infinite' : 'none'
+                  }}>
+                    {shippingDetails.isFree 
+                      ? `${t('free')} 🎉` 
+                      : `${shippingCost.toFixed(2)} EGP`
+                    }
+                  </span>
                 </div>
+                {deliveryInfo?.latitude && !shippingDetails.isFree && (
+                  <div style={{ 
+                    fontSize: '0.75rem', 
+                    color: c.textMuted, 
+                    textAlign: 'right',
+                    marginTop: '-4px'
+                  }}>
+                    📍 {shippingDetails.zone} Zone
+                  </div>
+                )}
               </div>
+              
+              {/* Free Shipping Progress Bar */}
+              {!shippingDetails.isFree && (
+                <div style={{
+                  marginBottom: '1.25rem',
+                  background: c.overlay,
+                  borderRadius: '8px',
+                  height: '6px',
+                  overflow: 'hidden'
+                }}>
+                  <div style={{
+                    width: `${Math.min((totalPrice / FREE_SHIPPING_THRESHOLD) * 100, 100)}%`,
+                    background: c.secondary,
+                    height: '100%',
+                    transition: 'width 0.5s cubic-bezier(0.23, 1, 0.320, 1)'
+                  }} />
+                </div>
+              )}
+              {!shippingDetails.isFree && (
+                <p style={{
+                  fontSize: '0.75rem',
+                  color: c.textMuted,
+                  textAlign: 'center',
+                  marginBottom: '1.25rem',
+                  animation: 'fadeInUp 0.6s ease-out'
+                }}>
+                  Add {(FREE_SHIPPING_THRESHOLD - totalPrice).toFixed(0)} EGP more for {t('free')} shipping!
+                </p>
+              )}
 
               <div style={{
                 display: 'flex',
@@ -1270,7 +1448,7 @@ export default function CartPage() {
                   fontSize: '1.05rem',
                   cursor: canCheckout ? 'pointer' : 'not-allowed',
                   opacity: canCheckout ? 1 : 0.6,
-                  transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                  transition: 'all 0.4s cubic-bezier(0.23, 1, 0.320, 1)',
                   boxShadow: canCheckout ? `0 4px 12px ${c.overlay}` : 'none',
                   textTransform: 'uppercase',
                   letterSpacing: '0.5px',
@@ -1281,12 +1459,12 @@ export default function CartPage() {
                 }}
                 onMouseEnter={(e) => {
                   if (canCheckout) {
-                    e.target.style.transform = 'translateY(-3px)'
-                    e.target.style.boxShadow = `0 8px 24px ${c.overlay}`
+                    e.target.style.transform = 'translateY(-4px) scale(1.05)'
+                    e.target.style.boxShadow = `0 12px 32px ${c.overlay}`
                   }
                 }}
                 onMouseLeave={(e) => {
-                  e.target.style.transform = 'translateY(0)'
+                  e.target.style.transform = 'translateY(0) scale(1)'
                   e.target.style.boxShadow = canCheckout ? `0 4px 12px ${c.overlay}` : 'none'
                 }}
               >
@@ -1322,6 +1500,41 @@ export default function CartPage() {
           to { opacity: 1; transform: translateY(0); }
         }
 
+        @keyframes slideInItem {
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes slideInRight {
+          from { opacity: 0; transform: translateX(40px); }
+          to { opacity: 1; transform: translateX(0); }
+        }
+
+        @keyframes fadeInUp {
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes fadeInScale {
+          from { opacity: 0; transform: scale(0.9); }
+          to { opacity: 1; transform: scale(1); }
+        }
+
+        @keyframes fadeInDown {
+          from { opacity: 0; transform: translateY(-20px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes badgePulse {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.1); }
+        }
+
+        @keyframes bounce {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-15px); }
+        }
+
         * {
           box-sizing: border-box;
         }
@@ -1338,6 +1551,14 @@ export default function CartPage() {
 
         input[type=number] {
           -moz-appearance: textfield;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          * {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+          }
         }
       `}</style>
     </div>

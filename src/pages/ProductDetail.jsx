@@ -838,30 +838,7 @@ export default function ProductDetail() {
             </div>
 
             {/* Additional Info */}
-            <div style={{
-              background: c.background,
-              padding: '16px',
-              borderRadius: '12px',
-              border: `1px solid ${c.border}`,
-              display: 'grid',
-              gridTemplateColumns: isMobile ? '1fr 1fr' : '1fr',
-              gap: '12px'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '1.3rem' }}>🚚</span>
-                <div style={{ fontSize: '0.8rem' }}>
-                  <p style={{ margin: 0, fontWeight: '700', color: c.textDark }}>Free Shipping</p>
-                  <p style={{ margin: '2px 0 0 0', color: c.textLight }}>Worldwide</p>
-                </div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '1.3rem' }}>💳</span>
-                <div style={{ fontSize: '0.8rem' }}>
-                  <p style={{ margin: 0, fontWeight: '700', color: c.textDark }}>Secure Payment</p>
-                  <p style={{ margin: '2px 0 0 0', color: c.textLight }}>Multiple Methods</p>
-                </div>
-              </div>
-            </div>
+            
           </div>
         </div>
       </div>
