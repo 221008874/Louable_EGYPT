@@ -36,6 +36,13 @@ export default function CartPage() {
   const [scrollY, setScrollY] = useState(0)
   const [animatedCards, setAnimatedCards] = useState(new Set())
 
+  // ============ FULL-SCREEN MAP EDITOR STATES ============
+  const [showMapEditor, setShowMapEditor] = useState(false)
+  const [mapEditorCenter, setMapEditorCenter] = useState(null)
+  const [mapEditorLoading, setMapEditorLoading] = useState(true)
+  const [mapEditorError, setMapEditorError] = useState(false)
+  const [tempLocation, setTempLocation] = useState(null)
+
   // ============ SHIPPING CONFIGURATION (LUXOR BASED) ============
   const WAREHOUSE_LOCATION = { lat: 25.6872, lng: 32.6396 }
 
@@ -251,6 +258,39 @@ export default function CartPage() {
     }
   }
 
+  // ============ FULL-SCREEN MAP EDITOR HANDLERS ============
+  const handleOpenMapEditor = useCallback(() => {
+    setMapEditorLoading(true)
+    
+    // Set initial center from current location or delivery info
+    const initialCenter = deliveryInfo?.latitude 
+      ? { lat: deliveryInfo.latitude, lng: deliveryInfo.longitude }
+      : mapCenter
+      
+    setMapEditorCenter(initialCenter)
+    setTempLocation(initialCenter)
+    setShowMapEditor(true)
+    
+    // Prevent body scroll when modal is open
+    document.body.style.overflow = 'hidden'
+  }, [deliveryInfo, mapCenter])
+
+  const handleCloseMapEditor = useCallback(() => {
+    setShowMapEditor(false)
+    document.body.style.overflow = 'unset'
+  }, [])
+
+  const handleSaveMapLocation = useCallback(() => {
+    if (tempLocation && tempLocation.lat && tempLocation.lng) {
+      setFormData(prev => ({
+        ...prev,
+        latitude: tempLocation.lat,
+        longitude: tempLocation.lng
+      }))
+      handleCloseMapEditor()
+    }
+  }, [tempLocation, handleCloseMapEditor])
+
   // ============ COUPON HANDLING ============
   const COUPONS = useMemo(() => ({
     'SAVE10': { discount: 0.10, label: '10% off' },
@@ -402,6 +442,304 @@ export default function CartPage() {
   }), [])
 
   const c = colors[theme] || colors.light
+
+  // ============ FULL-SCREEN MAP EDITOR COMPONENT ============
+  const MapEditorModal = () => {
+    if (!showMapEditor) return null
+
+    return (
+      <div style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9999,
+        background: c.background,
+        display: 'flex',
+        flexDirection: 'column',
+        animation: 'fadeInMap 0.3s ease-out'
+      }}>
+        {/* TOP BAR */}
+        <div style={{
+          padding: '1rem 1.5rem',
+          background: c.card,
+          borderBottom: `2px solid ${c.border}`,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '1rem',
+          boxShadow: `0 4px 12px ${c.overlay}`
+        }}>
+          <div>
+            <h2 style={{
+              margin: 0,
+              color: c.textDark,
+              fontSize: '1.5rem',
+              fontWeight: '900',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px'
+            }}>
+              🗺️ {t('selectLocation') || 'Select Your Location'}
+            </h2>
+            <p style={{
+              margin: '4px 0 0 0',
+              color: c.textMuted,
+              fontSize: '0.85rem',
+              fontWeight: '600'
+            }}>
+              {t('tapOnMapToSelectLocation') || 'Click on the map to select your delivery location'}
+            </p>
+          </div>
+          <button
+            onClick={handleCloseMapEditor}
+            style={{
+              width: '44px',
+              height: '44px',
+              borderRadius: '50%',
+              border: `2px solid ${c.border}`,
+              background: c.surface,
+              color: c.textDark,
+              fontSize: '1.5rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'all 0.3s ease',
+              flexShrink: 0
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = c.danger
+              e.currentTarget.style.color = 'white'
+              e.currentTarget.style.transform = 'scale(1.1)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = c.surface
+              e.currentTarget.style.color = c.textDark
+              e.currentTarget.style.transform = 'scale(1)'
+            }}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* MAP CONTAINER */}
+        <div style={{
+          flex: 1,
+          position: 'relative',
+          overflow: 'hidden',
+          background: c.overlay
+        }}>
+          {mapEditorLoading ? (
+            <div style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: c.card,
+              zIndex: 10
+            }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{
+                  fontSize: '3rem',
+                  marginBottom: '1rem',
+                  animation: 'spin 2s linear infinite'
+                }}>
+                  📡
+                </div>
+                <p style={{ color: c.textMuted, fontWeight: '700' }}>
+                  {t('loadingMap') || 'Loading map...'}
+                </p>
+              </div>
+            </div>
+          ) : mapEditorCenter ? (
+            <iframe
+              src={`https://www.openstreetmap.org/export/embed.html?bbox=${mapEditorCenter.lng - 0.05}%2C${mapEditorCenter.lat - 0.05}%2C${mapEditorCenter.lng + 0.05}%2C${mapEditorCenter.lat + 0.05}&marker=${mapEditorCenter.lat}%2C${mapEditorCenter.lng}`}
+              style={{
+                width: '100%',
+                height: '100%',
+                border: 'none'
+              }}
+              title="Location Editor Map"
+              loading="lazy"
+            />
+          ) : null}
+
+          {/* CENTER MARKER */}
+          <div style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            zIndex: 50,
+            pointerEvents: 'none',
+            textShadow: '0 2px 8px rgba(0,0,0,0.3)',
+            fontSize: '2.5rem',
+            animation: 'bounceMarker 1s ease-in-out infinite'
+          }}>
+            📍
+          </div>
+
+          {/* INFO CARD (BOTTOM) */}
+          <div style={{
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            background: c.card,
+            borderTop: `2px solid ${c.border}`,
+            padding: '1.5rem',
+            boxShadow: `0 -4px 12px ${c.overlay}`,
+            animation: 'slideUpMap 0.4s ease-out',
+            maxHeight: '280px',
+            overflowY: 'auto'
+          }}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+              gap: '1rem',
+              marginBottom: '1.5rem'
+            }}>
+              <div>
+                <label style={{
+                  display: 'block',
+                  fontSize: '0.8rem',
+                  fontWeight: '700',
+                  color: c.textMuted,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  marginBottom: '0.5rem'
+                }}>
+                  Latitude
+                </label>
+                <div style={{
+                  padding: '10px 14px',
+                  background: c.overlay,
+                  borderRadius: '10px',
+                  border: `2px solid ${c.border}`,
+                  fontSize: '0.95rem',
+                  fontWeight: '700',
+                  color: c.textDark,
+                  fontFamily: 'monospace'
+                }}>
+                  {tempLocation?.lat?.toFixed(6) || '—'}
+                </div>
+              </div>
+              <div>
+                <label style={{
+                  display: 'block',
+                  fontSize: '0.8rem',
+                  fontWeight: '700',
+                  color: c.textMuted,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  marginBottom: '0.5rem'
+                }}>
+                  Longitude
+                </label>
+                <div style={{
+                  padding: '10px 14px',
+                  background: c.overlay,
+                  borderRadius: '10px',
+                  border: `2px solid ${c.border}`,
+                  fontSize: '0.95rem',
+                  fontWeight: '700',
+                  color: c.textDark,
+                  fontFamily: 'monospace'
+                }}>
+                  {tempLocation?.lng?.toFixed(6) || '—'}
+                </div>
+              </div>
+            </div>
+
+            <div style={{
+              display: 'flex',
+              gap: '1rem',
+              flexDirection: isMobile ? 'column' : 'row'
+            }}>
+              <button
+                onClick={handleCloseMapEditor}
+                style={{
+                  flex: 1,
+                  padding: '12px 20px',
+                  background: c.card,
+                  border: `2px solid ${c.border}`,
+                  borderRadius: '12px',
+                  color: c.textDark,
+                  fontWeight: '800',
+                  fontSize: '1rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = c.border
+                  e.currentTarget.style.transform = 'translateY(-2px)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = c.card
+                  e.currentTarget.style.transform = 'translateY(0)'
+                }}
+              >
+                ✕ {t('cancel') || 'Cancel'}
+              </button>
+              <button
+                onClick={handleSaveMapLocation}
+                style={{
+                  flex: 1,
+                  padding: '12px 20px',
+                  background: `linear-gradient(135deg, ${c.success} 0%, ${c.success}dd 100%)`,
+                  border: 'none',
+                  borderRadius: '12px',
+                  color: 'white',
+                  fontWeight: '800',
+                  fontSize: '1rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s cubic-bezier(0.23, 1, 0.320, 1)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  boxShadow: `0 4px 12px ${c.success}40`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-4px) scale(1.05)'
+                  e.currentTarget.style.boxShadow = `0 8px 24px ${c.success}60`
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0) scale(1)'
+                  e.currentTarget.style.boxShadow = `0 4px 12px ${c.success}40`
+                }}
+              >
+                <span>✓</span> {t('save') || 'Save Location'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <style>{`
+          @keyframes fadeInMap {
+            from { opacity: 0; }
+            to { opacity: 1; }
+          }
+          @keyframes slideUpMap {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+          @keyframes bounceMarker {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); }
+            50% { transform: translate(-50%, -60%) scale(1.1); }
+          }
+          @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+          }
+        `}</style>
+      </div>
+    )
+  }
 
   // ============ RENDER HELPERS ============
   const CartErrorBanner = () => {
@@ -1099,7 +1437,7 @@ export default function CartPage() {
                     {formErrors.address && <div style={{ color: c.danger, fontSize: '0.75rem', marginTop: '4px' }}>✕ {formErrors.address}</div>}
                   </div>
 
-                  {/* MAP */}
+                  {/* MAP - EMBEDDED WITH EDIT BUTTON */}
                   <div>
                     <label style={{
                       display: 'block',
@@ -1108,9 +1446,39 @@ export default function CartPage() {
                       fontWeight: '700',
                       color: c.textDark,
                       textTransform: 'uppercase',
-                      letterSpacing: '0.5px'
+                      letterSpacing: '0.5px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
                     }}>
-                      {t('location')} <span style={{ color: c.danger }}>*</span>
+                      <span>{t('location')} <span style={{ color: c.danger }}>*</span></span>
+                      <button
+                        type="button"
+                        onClick={handleOpenMapEditor}
+                        style={{
+                          background: `linear-gradient(135deg, ${c.secondary} 0%, ${c.accent} 100%)`,
+                          color: 'white',
+                          border: 'none',
+                          padding: '6px 12px',
+                          borderRadius: '8px',
+                          fontSize: '0.75rem',
+                          fontWeight: '700',
+                          cursor: 'pointer',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px',
+                          transition: 'all 0.3s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = 'translateY(-2px) scale(1.05)'
+                          e.currentTarget.style.boxShadow = `0 4px 12px ${c.secondary}40`
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = 'translateY(0) scale(1)'
+                          e.currentTarget.style.boxShadow = 'none'
+                        }}
+                      >
+                        🗺️ {t('editLocation') || 'Edit Location'}
+                      </button>
                     </label>
 
                     {mapError && (
@@ -1203,31 +1571,54 @@ export default function CartPage() {
                 boxShadow: `0 4px 12px ${c.overlay}`,
                 animation: 'slideInRight 0.6s ease-out'
               }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '1rem' }}>
                   <h4 style={{ margin: 0, color: c.success, fontWeight: '800', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span>✓</span> {t('deliveryInfo')}
                   </h4>
-                  <button
-                    onClick={() => setShowDeliveryForm(true)}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: c.success,
-                      cursor: 'pointer',
-                      fontSize: '0.85rem',
-                      fontWeight: '700',
-                      textDecoration: 'underline',
-                      transition: 'all 0.3s ease'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.target.style.color = c.secondary
-                    }}
-                    onMouseLeave={(e) => {
-                      e.target.style.color = c.success
-                    }}
-                  >
-                    {t('edit')}
-                  </button>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => setShowDeliveryForm(true)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: c.success,
+                        cursor: 'pointer',
+                        fontSize: '0.85rem',
+                        fontWeight: '700',
+                        textDecoration: 'underline',
+                        transition: 'all 0.3s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.target.style.color = c.secondary
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.color = c.success
+                      }}
+                    >
+                      {t('edit')}
+                    </button>
+                    <button
+                      onClick={handleOpenMapEditor}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: c.secondary,
+                        cursor: 'pointer',
+                        fontSize: '0.85rem',
+                        fontWeight: '700',
+                        textDecoration: 'underline',
+                        transition: 'all 0.3s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.target.style.color = c.accent
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.color = c.secondary
+                      }}
+                    >
+                      {t('editLocation') || '🗺️ Location'}
+                    </button>
+                  </div>
                 </div>
                 <div style={{ fontSize: '0.9rem', color: c.textDark, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   <div><strong>{deliveryInfo.name}</strong></div>
@@ -1493,6 +1884,9 @@ export default function CartPage() {
           </aside>
         </div>
       </div>
+
+      {/* MAP EDITOR MODAL */}
+      <MapEditorModal />
 
       <style>{`
         @keyframes slideDown {
