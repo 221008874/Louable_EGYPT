@@ -5,6 +5,15 @@
       "maxDuration": 30
     }
   },
+  "headers": [
+    {
+      "source": "/api/paymob/webhook",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "POST,OPTIONS" }
+      ]
+    }
+  ],
   "routes": [
     {
       "src": "/api/paymob/create-payment",
@@ -17,15 +26,13 @@
     {
       "src": "/api/check-status",
       "dest": "/api/check-status.js"
-    }
-  ],
-  "headers": [
+    },
     {
-      "source": "/api/paymob/webhook",
-      "headers": [
-        { "key": "Access-Control-Allow-Origin", "value": "*" },
-        { "key": "Access-Control-Allow-Methods", "value": "POST,OPTIONS" }
-      ]
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
   ]
 }
