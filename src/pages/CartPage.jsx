@@ -127,14 +127,14 @@ export default function CartPage() {
   const shippingDetails = calculateShipping()
 
   // ============ DELIVERY FORM STATES ============
-  const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState({
     name: deliveryInfo?.name || '',
     phone: deliveryInfo?.phone || '',
     address: deliveryInfo?.address || '',
+    city: deliveryInfo?.city || '',
     latitude: deliveryInfo?.latitude || null,
     longitude: deliveryInfo?.longitude || null
   })
-
   const [formErrors, setFormErrors] = useState({})
   const [showDeliveryForm, setShowDeliveryForm] = useState(!deliveryInfo)
   const [mapCenter, setMapCenter] = useState(null)
@@ -250,13 +250,14 @@ export default function CartPage() {
   }, [stockErrors, hasDeliveryInfo, isProcessing])
 
   // ============ FORM VALIDATION ============
-  const validateForm = useCallback(() => {
+    const validateForm = useCallback(() => {
     const errors = {}
     const phoneRegex = /^\+?[\d\s\-\(\)]{10,}$/
 
     if (!formData.name.trim()) errors.name = t('nameRequired')
     if (!formData.phone.trim() || !phoneRegex.test(formData.phone)) errors.phone = t('validPhoneRequired')
     if (!formData.address.trim() || formData.address.trim().length < 10) errors.address = t('addressTooShort')
+    if (!formData.city.trim()) errors.city = t('cityRequired')
     if (!formData.latitude || !formData.longitude) errors.location = t('locationRequired')
 
     setFormErrors(errors)
@@ -441,12 +442,14 @@ export default function CartPage() {
   const finalPrice = subtotal + shippingCost
 
   // ============ MODIFIED: CHECKOUT WITH PAYMOB ============
-  const handleCheckout = useCallback(async () => {
-    if (!canCheckout) return
+    const handleCheckout = useCallback(async () => {
+    if (!canCheckout || Object.keys(stockErrors).length > 0) {
+      alert(t('resolveStockIssues') || 'Please resolve stock issues before checkout');
+      return;
+    }
 
     setIsProcessing(true)
     const orderId = `order_${Date.now()}`
-
     try {
       // Create order in Firestore
       const orderRef = await addDoc(collection(db, 'orders_egp'), {
@@ -478,22 +481,30 @@ export default function CartPage() {
 
       // ============ PAYMOB CARD PAYMENT ============
       if (paymentMethod === 'card') {
-        const billingData = {
-          firstName: deliveryInfo.name.split(' ')[0] || deliveryInfo.name,
-          lastName: deliveryInfo.name.split(' ').slice(1).join(' ') || 'N/A',
-          email: 'customer@example.com', // Default for guest
-          phone: deliveryInfo.phone,
-          city: deliveryInfo.city || 'Cairo',
-          street: deliveryInfo.address,
-          country: 'EG'
-        }
+              const billingData = {
+        firstName: deliveryInfo.name.split(' ')[0] || deliveryInfo.name,
+        lastName: deliveryInfo.name.split(' ').slice(1).join(' ') || 'N/A',
+        email: 'customer@example.com', // Default for guest
+        phone: deliveryInfo.phone,
+        city: deliveryInfo.city || 'Cairo',
+        street: deliveryInfo.address,
+        country: 'EG',
+        redirectUrl: `${window.location.origin}/payment-callback`
+      }
 
-        const { iframeUrl, paymobOrderId } = await paymobService.createPayment(
+               const { iframeUrl, paymobOrderId } = await paymobService.createPayment(
           finalPrice,
           billingData,
           items,
           'EGP'
         )
+
+        // Update order with paymobOrderId and status
+        await updateDoc(orderRef, { 
+          paymobOrderId,
+          paymentStatus: 'awaiting_payment',
+          updatedAt: serverTimestamp()
+        })
 
         // Update order with paymobOrderId
         await updateDoc(orderRef, { paymobOrderId })
@@ -1662,7 +1673,7 @@ export default function CartPage() {
                     {formErrors.phone && <div style={{ color: c.danger, fontSize: '0.75rem', marginTop: '4px' }}>✕ {formErrors.phone}</div>}
                   </div>
 
-                  {/* ADDRESS */}
+                                   {/* ADDRESS */}
                   <div>
                     <label style={{
                       display: 'block',
@@ -1699,6 +1710,43 @@ export default function CartPage() {
                       onBlur={(e) => (e.target.style.borderColor = formErrors.address ? c.danger : c.border)}
                     />
                     {formErrors.address && <div style={{ color: c.danger, fontSize: '0.75rem', marginTop: '4px' }}>✕ {formErrors.address}</div>}
+                  </div>
+
+                  {/* CITY */}
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      marginBottom: '0.5rem',
+                      fontSize: '0.9rem',
+                      fontWeight: '700',
+                      color: c.textDark,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px'
+                    }}>
+                      City <span style={{ color: c.danger }}>*</span>
+                    </label>
+                    <input
+                      name="city"
+                      value={formData.city}
+                      onChange={handleInputChange}
+                      placeholder="Enter city (e.g., Cairo, Alexandria)"
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        border: `2px solid ${formErrors.city ? c.danger : c.border}`,
+                        borderRadius: '12px',
+                        fontSize: '1rem',
+                        background: c.surface,
+                        color: c.textDark,
+                        fontFamily: 'inherit',
+                        transition: 'all 0.3s ease'
+                      }}
+                      onFocus={(e) => {
+                        if (!formErrors.city) e.target.style.borderColor = c.secondary
+                      }}
+                      onBlur={(e) => (e.target.style.borderColor = formErrors.city ? c.danger : c.border)}
+                    />
+                    {formErrors.city && <div style={{ color: c.danger, fontSize: '0.75rem', marginTop: '4px' }}>✕ {formErrors.city}</div>}
                   </div>
 
                   {/* MAP - EMBEDDED WITH EDIT BUTTON */}

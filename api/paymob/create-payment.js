@@ -4,8 +4,7 @@ import axios from 'axios';
 const PAYMOB_API_KEY = process.env.PAYMOB_API_KEY;
 const INTEGRATION_ID = parseInt(process.env.PAYMOB_INTEGRATION_ID);
 const IFRAME_ID = parseInt(process.env.PAYMOB_IFRAME_ID);
-const BASE_URL = 'https://accept.paymob.com/api'; // ✅ No extra spaces
-
+const BASE_URL = 'https://accept.paymob.com/api';
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
@@ -39,6 +38,7 @@ export default async function handler(req, res) {
     const paymobOrderId = orderRes.data.id;
 
     // Step 3: Payment Key
+       // Step 3: Payment Key
     const keyRes = await axios.post(`${BASE_URL}/acceptance/payment_keys`, {
       auth_token: token,
       amount_cents: Math.round(amount * 100),
@@ -49,8 +49,8 @@ export default async function handler(req, res) {
         floor: billingData.floor || 'NA',
         building: billingData.building || 'NA',
         street: billingData.street || 'NA',
-        city: billingData.city,
-        state: billingData.state || billingData.city,
+        city: billingData.city || 'Cairo',
+        state: billingData.state || billingData.city || 'Cairo',
         country: billingData.country || 'EG',
         first_name: billingData.firstName,
         last_name: billingData.lastName,
@@ -59,7 +59,9 @@ export default async function handler(req, res) {
       },
       currency,
       integration_id: INTEGRATION_ID,
-      lock_order_when_paid: true
+      lock_order_when_paid: true,
+      redirection_url: billingData.redirectUrl || 'https://elhamdindustriesegp.vercel.app/payment-callback',
+      notification_url: 'https://elhamdindustriesegp.vercel.app/api/paymob/webhook'
     });
 
     const paymentToken = keyRes.data.token;
@@ -71,11 +73,11 @@ export default async function handler(req, res) {
       iframeUrl: `https://accept.paymob.com/api/acceptance/iframes/${IFRAME_ID}?payment_token=${paymentToken}` // ✅ No extra spaces
     });
 
-  } catch (error) {
+   } catch (error) {
     console.error('Paymob Error:', error.response?.data || error.message);
     return res.status(500).json({ 
       error: 'Payment creation failed',
-      details: error.message 
+      details: error.response?.data || error.message 
     });
   }
 }

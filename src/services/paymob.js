@@ -2,7 +2,7 @@
 const API_BASE = '/api';
 
 export const paymobService = {
-  async createPayment(amount, billingData, items, currency = 'EGP') {
+    async createPayment(amount, billingData, items, currency = 'EGP') {
     const res = await fetch(`${API_BASE}/paymob/create-payment`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
