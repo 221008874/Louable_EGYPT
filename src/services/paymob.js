@@ -1,4 +1,4 @@
-// Paymob Service for Vercel API
+// src/services/paymob.js
 const API_BASE = '/api';
 
 export const paymobService = {
@@ -34,14 +34,5 @@ export const paymobService = {
     
     if (!res.ok) throw new Error('Status check failed');
     return res.json();
-  },
-
-  handleCallback() {
-    const params = new URLSearchParams(window.location.search);
-    return {
-      orderId: params.get('order'),
-      success: params.get('success') === 'true',
-      pending: !params.has('success')
-    };
   }
 };

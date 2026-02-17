@@ -1,13 +1,12 @@
+// api/paymob/create-payment.js
 import axios from 'axios';
 
-// Paymob Configuration (YOUR CREDENTIALS)
-const PAYMOB_API_KEY = 'ZXlKaGJHY2lPaUpJVXpVeE1pSXNJblI1Y0NJNklrcFhWQ0o5LmV5SmpiR0Z6Y3lJNklrMWxjbU5vWVc1MElpd2ljSEp2Wm1sc1pWOXdheUk2TVRFek1UY3hNU3dpYm1GdFpTSTZJbWx1YVhScFlXd2lmUS5sSGxnX3BFSXdxc21nYkxYbUdmbkM3Y3dNakhPMWJsMGl1T2VnYlhpRFBRYTJndkdlZmdFYVoxcjlUNXo2ajliQ0FxN29TVWtlYTBwOWEtNm9VZWtFQQ==';
-const INTEGRATION_ID = 5543872;
-const IFRAME_ID = 1007401;
-const BASE_URL = 'https://accept.paymob.com/api';
+const PAYMOB_API_KEY = process.env.PAYMOB_API_KEY;
+const INTEGRATION_ID = parseInt(process.env.PAYMOB_INTEGRATION_ID);
+const IFRAME_ID = parseInt(process.env.PAYMOB_IFRAME_ID);
+const BASE_URL = 'https://accept.paymob.com/api'; // ✅ No extra spaces
 
 export default async function handler(req, res) {
-  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -69,7 +68,7 @@ export default async function handler(req, res) {
       success: true,
       paymentToken,
       paymobOrderId: paymobOrderId.toString(),
-      iframeUrl: `https://accept.paymob.com/api/acceptance/iframes/${IFRAME_ID}?payment_token=${paymentToken}`
+      iframeUrl: `https://accept.paymob.com/api/acceptance/iframes/${IFRAME_ID}?payment_token=${paymentToken}` // ✅ No extra spaces
     });
 
   } catch (error) {
