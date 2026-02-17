@@ -14,25 +14,10 @@
       ]
     }
   ],
-  "routes": [
-    {
-      "src": "/api/paymob/create-payment",
-      "dest": "/api/paymob/create-payment.js"
-    },
-    {
-      "src": "/api/paymob/webhook",
-      "dest": "/api/paymob/webhook.js"
-    },
-    {
-      "src": "/api/check-status",
-      "dest": "/api/check-status.js"
-    },
-    {
-      "handle": "filesystem"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
-    }
+  "rewrites": [
+    { "source": "/api/paymob/create-payment", "destination": "/api/paymob/create-payment.js" },
+    { "source": "/api/paymob/webhook", "destination": "/api/paymob/webhook.js" },
+    { "source": "/api/check-status", "destination": "/api/check-status.js" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }
