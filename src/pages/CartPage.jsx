@@ -1,10 +1,26 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCart } from '../context/CartContext'
 import { useLanguage } from '../context/LanguageContext'
 import { useTheme } from '../context/ThemeContext'
 import { db } from '../services/firebase'
-import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore'
+import { paymobService } from '../services/paymob' // ADDED: Paymob service
+import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc } from 'firebase/firestore' // ADDED: updateDoc
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
+
+// Fix Leaflet default marker icon issue in webpack/vite
+import markerIcon from 'leaflet/dist/images/marker-icon.png'
+import markerShadow from 'leaflet/dist/images/marker-shadow.png'
+
+let DefaultIcon = L.icon({
+  iconUrl: markerIcon,
+  shadowUrl: markerShadow,
+  iconSize: [25, 41],
+  iconAnchor: [12, 41]
+})
+
+L.Marker.prototype.options.icon = DefaultIcon
 
 export default function CartPage() {
   const {
@@ -34,14 +50,23 @@ export default function CartPage() {
   )
   const [hoveredItem, setHoveredItem] = useState(null)
   const [scrollY, setScrollY] = useState(0)
-  const [animatedCards, setAnimatedCards] = useState(new Set())
+
+  // ============ ADDED: PAYMENT METHOD STATE ============
+  const [paymentMethod, setPaymentMethod] = useState('cod') // 'cod' or 'card'
 
   // ============ FULL-SCREEN MAP EDITOR STATES ============
   const [showMapEditor, setShowMapEditor] = useState(false)
   const [mapEditorCenter, setMapEditorCenter] = useState(null)
-  const [mapEditorLoading, setMapEditorLoading] = useState(true)
-  const [mapEditorError, setMapEditorError] = useState(false)
+  const [mapEditorLoading, setMapEditorLoading] = useState(false)
   const [tempLocation, setTempLocation] = useState(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [isSearching, setIsSearching] = useState(false)
+  
+  // Leaflet map refs
+  const mapRef = useRef(null)
+  const mapContainerRef = useRef(null)
+  const markerRef = useRef(null)
 
   // ============ SHIPPING CONFIGURATION (LUXOR BASED) ============
   const WAREHOUSE_LOCATION = { lat: 25.6872, lng: 32.6396 }
@@ -258,26 +283,126 @@ export default function CartPage() {
     }
   }
 
+  // ============ LOCATION SEARCH ============
+  const handleSearch = useCallback(async () => {
+    if (!searchQuery.trim()) return
+    
+    setIsSearching(true)
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&countrycodes=eg&limit=5`
+      )
+      const data = await response.json()
+      setSearchResults(data.map(item => ({
+        display_name: item.display_name,
+        lat: parseFloat(item.lat),
+        lon: parseFloat(item.lon)
+      })))
+    } catch (error) {
+      console.error('Search error:', error)
+      setSearchResults([])
+    } finally {
+      setIsSearching(false)
+    }
+  }, [searchQuery])
+
+  const handleSelectResult = (result) => {
+    const newLocation = { lat: result.lat, lng: result.lon }
+    setTempLocation(newLocation)
+    setMapEditorCenter(newLocation)
+    setSearchQuery(result.display_name)
+    setSearchResults([])
+    
+    // Update map view if map exists
+    if (mapRef.current) {
+      mapRef.current.setView([newLocation.lat, newLocation.lng], 16)
+      if (markerRef.current) {
+        markerRef.current.setLatLng([newLocation.lat, newLocation.lng])
+      }
+    }
+  }
+
+  // ============ LEAFLET MAP INITIALIZATION ============
+  useEffect(() => {
+    if (showMapEditor && mapContainerRef.current && !mapRef.current) {
+      const initialCenter = mapEditorCenter || { lat: 30.0444, lng: 31.2357 }
+      
+      mapRef.current = L.map(mapContainerRef.current).setView(
+        [initialCenter.lat, initialCenter.lng],
+        15
+      )
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors',
+        maxZoom: 19
+      }).addTo(mapRef.current)
+
+      // Create draggable marker
+      markerRef.current = L.marker([initialCenter.lat, initialCenter.lng], {
+        draggable: true,
+        title: 'Drag to set your location'
+      }).addTo(mapRef.current)
+
+      // Update temp location when marker is dragged
+      markerRef.current.on('dragend', (e) => {
+        const { lat, lng } = e.target.getLatLng()
+        setTempLocation({ lat, lng })
+      })
+
+      // Click on map to move marker
+      mapRef.current.on('click', (e) => {
+        const { lat, lng } = e.latlng
+        markerRef.current.setLatLng([lat, lng])
+        setTempLocation({ lat, lng })
+      })
+
+      setMapEditorLoading(false)
+    }
+
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove()
+        mapRef.current = null
+        markerRef.current = null
+      }
+    }
+  }, [showMapEditor, mapEditorCenter])
+
+  // Update marker position when mapEditorCenter changes
+  useEffect(() => {
+    if (mapRef.current && markerRef.current && mapEditorCenter) {
+      markerRef.current.setLatLng([mapEditorCenter.lat, mapEditorCenter.lng])
+      mapRef.current.setView([mapEditorCenter.lat, mapEditorCenter.lng], 16)
+    }
+  }, [mapEditorCenter])
+
   // ============ FULL-SCREEN MAP EDITOR HANDLERS ============
   const handleOpenMapEditor = useCallback(() => {
     setMapEditorLoading(true)
     
-    // Set initial center from current location or delivery info
     const initialCenter = deliveryInfo?.latitude 
       ? { lat: deliveryInfo.latitude, lng: deliveryInfo.longitude }
-      : mapCenter
+      : mapCenter || { lat: 30.0444, lng: 31.2357 }
       
     setMapEditorCenter(initialCenter)
     setTempLocation(initialCenter)
+    setSearchQuery('')
+    setSearchResults([])
     setShowMapEditor(true)
     
-    // Prevent body scroll when modal is open
     document.body.style.overflow = 'hidden'
   }, [deliveryInfo, mapCenter])
 
   const handleCloseMapEditor = useCallback(() => {
     setShowMapEditor(false)
     document.body.style.overflow = 'unset'
+    
+    // Clean up map instance
+    if (mapRef.current) {
+      mapRef.current.remove()
+      mapRef.current = null
+      markerRef.current = null
+    }
   }, [])
 
   const handleSaveMapLocation = useCallback(() => {
@@ -315,7 +440,7 @@ export default function CartPage() {
   const shippingCost = shippingDetails.cost
   const finalPrice = subtotal + shippingCost
 
-  // ============ CHECKOUT ============
+  // ============ MODIFIED: CHECKOUT WITH PAYMOB ============
   const handleCheckout = useCallback(async () => {
     if (!canCheckout) return
 
@@ -323,8 +448,10 @@ export default function CartPage() {
     const orderId = `order_${Date.now()}`
 
     try {
-      await addDoc(collection(db, 'orders_egp'), {
+      // Create order in Firestore
+      const orderRef = await addDoc(collection(db, 'orders_egp'), {
         orderId,
+        userId: `guest_${Date.now()}`, // Guest checkout
         items: items.map(item => ({
           id: item.id,
           name: item.name,
@@ -334,7 +461,8 @@ export default function CartPage() {
         totalPrice: finalPrice,
         totalItems: items.reduce((sum, item) => sum + (item.quantity || 1), 0),
         currency: 'EGP',
-        paymentMethod: 'Cash on Delivery',
+        paymentMethod: paymentMethod === 'cod' ? 'Cash on Delivery' : 'Card (Paymob)',
+        paymentStatus: paymentMethod === 'cod' ? 'pending' : 'awaiting_payment',
         status: 'pending',
         customerName: deliveryInfo.name,
         customerPhone: deliveryInfo.phone,
@@ -348,6 +476,37 @@ export default function CartPage() {
         createdAt: serverTimestamp()
       })
 
+      // ============ PAYMOB CARD PAYMENT ============
+      if (paymentMethod === 'card') {
+        const billingData = {
+          firstName: deliveryInfo.name.split(' ')[0] || deliveryInfo.name,
+          lastName: deliveryInfo.name.split(' ').slice(1).join(' ') || 'N/A',
+          email: 'customer@example.com', // Default for guest
+          phone: deliveryInfo.phone,
+          city: deliveryInfo.city || 'Cairo',
+          street: deliveryInfo.address,
+          country: 'EG'
+        }
+
+        const { iframeUrl, paymobOrderId } = await paymobService.createPayment(
+          finalPrice,
+          billingData,
+          items,
+          'EGP'
+        )
+
+        // Update order with paymobOrderId
+        await updateDoc(orderRef, { paymobOrderId })
+
+        // Store in session and redirect to Paymob
+        sessionStorage.setItem('pendingOrderId', orderId)
+        sessionStorage.setItem('pendingFirestoreId', orderRef.id)
+        sessionStorage.setItem('paymobOrderId', paymobOrderId)
+        paymobService.redirectToPayment(iframeUrl)
+        return // Don't clear cart yet, wait for payment callback
+      }
+
+      // ============ CASH ON DELIVERY ============
       clearCart()
       clearDeliveryInfo()
       navigate('/order-success', {
@@ -357,7 +516,8 @@ export default function CartPage() {
           totalPrice: finalPrice,
           items,
           deliveryInfo,
-          shipping: shippingDetails
+          shipping: shippingDetails,
+          paymentMethod: 'cod'
         }
       })
     } catch (error) {
@@ -365,7 +525,7 @@ export default function CartPage() {
       alert(t('checkoutFailed') + ': ' + (error.message || t('tryAgain')))
       setIsProcessing(false)
     }
-  }, [canCheckout, items, finalPrice, deliveryInfo, appliedCoupon, shippingDetails, clearCart, clearDeliveryInfo, navigate, t])
+  }, [canCheckout, items, finalPrice, deliveryInfo, appliedCoupon, shippingDetails, paymentMethod, clearCart, clearDeliveryInfo, navigate, t])
 
   const handleQuantityUpdate = useCallback(async (item, newQuantity) => {
     if (newQuantity < 1) {
@@ -443,7 +603,7 @@ export default function CartPage() {
 
   const c = colors[theme] || colors.light
 
-  // ============ FULL-SCREEN MAP EDITOR COMPONENT ============
+  // ============ MAP EDITOR MODAL COMPONENT ============
   const MapEditorModal = () => {
     if (!showMapEditor) return null
 
@@ -478,7 +638,7 @@ export default function CartPage() {
               alignItems: 'center',
               gap: '12px'
             }}>
-              🗺️ {t('selectLocation') || 'Select Your Location'}
+              🗺️ Select Location
             </h2>
             <p style={{
               margin: '4px 0 0 0',
@@ -486,7 +646,7 @@ export default function CartPage() {
               fontSize: '0.85rem',
               fontWeight: '600'
             }}>
-              {t('tapOnMapToSelectLocation') || 'Click on the map to select your delivery location'}
+              Drag the marker or click on map to set your location
             </p>
           </div>
           <button
@@ -521,14 +681,111 @@ export default function CartPage() {
           </button>
         </div>
 
-        {/* MAP CONTAINER */}
+        {/* SEARCH BAR */}
+        <div style={{
+          padding: '1rem 1.5rem',
+          background: c.card,
+          borderBottom: `1px solid ${c.border}`,
+          display: 'flex',
+          gap: '12px',
+          alignItems: 'flex-start',
+          flexDirection: isMobile ? 'column' : 'row'
+        }}>
+          <div style={{ flex: 1, position: 'relative', width: '100%' }}>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              placeholder="Search for area, street, or landmark in Egypt..."
+              style={{
+                width: '100%',
+                padding: '12px 16px',
+                border: `2px solid ${c.border}`,
+                borderRadius: '10px',
+                fontSize: '1rem',
+                background: c.surface,
+                color: c.textDark,
+                fontFamily: 'inherit'
+              }}
+            />
+            {/* Search Results Dropdown */}
+            {searchResults.length > 0 && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                right: 0,
+                background: c.surface,
+                border: `2px solid ${c.border}`,
+                borderRadius: '10px',
+                marginTop: '8px',
+                maxHeight: '300px',
+                overflowY: 'auto',
+                zIndex: 1000,
+                boxShadow: `0 8px 24px ${c.overlay}`
+              }}>
+                {searchResults.map((result, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => handleSelectResult(result)}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      textAlign: 'left',
+                      background: 'transparent',
+                      border: 'none',
+                      borderBottom: `1px solid ${c.border}`,
+                      cursor: 'pointer',
+                      color: c.textDark,
+                      fontSize: '0.9rem',
+                      transition: 'background 0.2s ease',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = c.overlay
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'transparent'
+                    }}
+                  >
+                    <span>📍</span>
+                    <span style={{ flex: 1 }}>{result.display_name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <button
+            onClick={handleSearch}
+            disabled={isSearching || !searchQuery.trim()}
+            style={{
+              padding: '12px 24px',
+              background: isSearching || !searchQuery.trim() ? c.textMuted : c.secondary,
+              color: 'white',
+              border: 'none',
+              borderRadius: '10px',
+              fontWeight: '800',
+              cursor: isSearching || !searchQuery.trim() ? 'not-allowed' : 'pointer',
+              transition: 'all 0.3s ease',
+              whiteSpace: 'nowrap',
+              minWidth: '100px'
+            }}
+          >
+            {isSearching ? '...' : '🔍 Search'}
+          </button>
+        </div>
+
+        {/* MAP CONTAINER - LEAFLET */}
         <div style={{
           flex: 1,
           position: 'relative',
           overflow: 'hidden',
           background: c.overlay
         }}>
-          {mapEditorLoading ? (
+          {mapEditorLoading && (
             <div style={{
               position: 'absolute',
               inset: 0,
@@ -547,36 +804,40 @@ export default function CartPage() {
                   📡
                 </div>
                 <p style={{ color: c.textMuted, fontWeight: '700' }}>
-                  {t('loadingMap') || 'Loading map...'}
+                  Loading map...
                 </p>
               </div>
             </div>
-          ) : mapEditorCenter ? (
-            <iframe
-              src={`https://www.openstreetmap.org/export/embed.html?bbox=${mapEditorCenter.lng - 0.05}%2C${mapEditorCenter.lat - 0.05}%2C${mapEditorCenter.lng + 0.05}%2C${mapEditorCenter.lat + 0.05}&marker=${mapEditorCenter.lat}%2C${mapEditorCenter.lng}`}
-              style={{
-                width: '100%',
-                height: '100%',
-                border: 'none'
-              }}
-              title="Location Editor Map"
-              loading="lazy"
-            />
-          ) : null}
+          )}
+          
+          {/* Leaflet Map Container */}
+          <div 
+            ref={mapContainerRef}
+            style={{
+              width: '100%',
+              height: '100%',
+              zIndex: 1
+            }}
+          />
 
-          {/* CENTER MARKER */}
+          {/* Floating Instructions */}
           <div style={{
             position: 'absolute',
-            top: '50%',
+            top: '1rem',
             left: '50%',
-            transform: 'translate(-50%, -50%)',
-            zIndex: 50,
-            pointerEvents: 'none',
-            textShadow: '0 2px 8px rgba(0,0,0,0.3)',
-            fontSize: '2.5rem',
-            animation: 'bounceMarker 1s ease-in-out infinite'
+            transform: 'translateX(-50%)',
+            background: c.card,
+            padding: '8px 16px',
+            borderRadius: '20px',
+            boxShadow: `0 4px 12px ${c.overlay}`,
+            zIndex: 500,
+            fontSize: '0.85rem',
+            fontWeight: '700',
+            color: c.textDark,
+            border: `2px solid ${c.border}`,
+            pointerEvents: 'none'
           }}>
-            📍
+            🖱️ Click map or drag marker to set location
           </div>
 
           {/* INFO CARD (BOTTOM) */}
@@ -591,7 +852,8 @@ export default function CartPage() {
             boxShadow: `0 -4px 12px ${c.overlay}`,
             animation: 'slideUpMap 0.4s ease-out',
             maxHeight: '280px',
-            overflowY: 'auto'
+            overflowY: 'auto',
+            zIndex: 500
           }}>
             <div style={{
               display: 'grid',
@@ -615,7 +877,7 @@ export default function CartPage() {
                   padding: '10px 14px',
                   background: c.overlay,
                   borderRadius: '10px',
-                  border: `2px solid ${c.border}`,
+                  border: `2px solid ${tempLocation ? c.success : c.border}`,
                   fontSize: '0.95rem',
                   fontWeight: '700',
                   color: c.textDark,
@@ -640,7 +902,7 @@ export default function CartPage() {
                   padding: '10px 14px',
                   background: c.overlay,
                   borderRadius: '10px',
-                  border: `2px solid ${c.border}`,
+                  border: `2px solid ${tempLocation ? c.success : c.border}`,
                   fontSize: '0.95rem',
                   fontWeight: '700',
                   color: c.textDark,
@@ -681,39 +943,42 @@ export default function CartPage() {
                   e.currentTarget.style.transform = 'translateY(0)'
                 }}
               >
-                ✕ {t('cancel') || 'Cancel'}
+                ✕ Cancel
               </button>
               <button
                 onClick={handleSaveMapLocation}
+                disabled={!tempLocation}
                 style={{
                   flex: 1,
                   padding: '12px 20px',
-                  background: `linear-gradient(135deg, ${c.success} 0%, ${c.success}dd 100%)`,
+                  background: !tempLocation ? c.textMuted : `linear-gradient(135deg, ${c.success} 0%, ${c.success}dd 100%)`,
                   border: 'none',
                   borderRadius: '12px',
                   color: 'white',
                   fontWeight: '800',
                   fontSize: '1rem',
-                  cursor: 'pointer',
+                  cursor: !tempLocation ? 'not-allowed' : 'pointer',
                   transition: 'all 0.3s cubic-bezier(0.23, 1, 0.320, 1)',
                   textTransform: 'uppercase',
                   letterSpacing: '0.5px',
-                  boxShadow: `0 4px 12px ${c.success}40`,
+                  boxShadow: !tempLocation ? 'none' : `0 4px 12px ${c.success}40`,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '8px'
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = 'translateY(-4px) scale(1.05)'
-                  e.currentTarget.style.boxShadow = `0 8px 24px ${c.success}60`
+                  if (tempLocation) {
+                    e.currentTarget.style.transform = 'translateY(-4px) scale(1.05)'
+                    e.currentTarget.style.boxShadow = `0 8px 24px ${c.success}60`
+                  }
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.transform = 'translateY(0) scale(1)'
-                  e.currentTarget.style.boxShadow = `0 4px 12px ${c.success}40`
+                  e.currentTarget.style.boxShadow = !tempLocation ? 'none' : `0 4px 12px ${c.success}40`
                 }}
               >
-                <span>✓</span> {t('save') || 'Save Location'}
+                <span>✓</span> Save Location
               </button>
             </div>
           </div>
@@ -728,13 +993,12 @@ export default function CartPage() {
             from { opacity: 0; transform: translateY(20px); }
             to { opacity: 1; transform: translateY(0); }
           }
-          @keyframes bounceMarker {
-            0%, 100% { transform: translate(-50%, -50%) scale(1); }
-            50% { transform: translate(-50%, -60%) scale(1.1); }
-          }
           @keyframes spin {
             from { transform: rotate(0deg); }
             to { transform: rotate(360deg); }
+          }
+          .leaflet-container {
+            font-family: inherit;
           }
         `}</style>
       </div>
@@ -760,7 +1024,7 @@ export default function CartPage() {
           <span style={{ fontSize: '1.3rem', flexShrink: 0 }}>⚠️</span>
           <div style={{ flex: 1 }}>
             <h4 style={{ margin: '0 0 8px 0', fontSize: '1rem', fontWeight: '700' }}>
-              {t('stockIssuesDetected')}
+              Stock Issues Detected
             </h4>
             {Object.entries(stockErrors).map(([id, error]) => (
               <p key={id} style={{ margin: '4px 0', fontSize: '0.85rem' }}>
@@ -790,7 +1054,7 @@ export default function CartPage() {
                 e.target.style.transform = 'scale(1)'
               }}
             >
-              {t('dismiss')}
+              Dismiss
             </button>
           </div>
         </div>
@@ -826,7 +1090,7 @@ export default function CartPage() {
           textAlign: 'center',
           animation: 'fadeInUp 0.8s ease-out'
         }}>
-          {t('emptyCart')}
+          Your cart is empty
         </h2>
         <p style={{
           color: c.textMuted,
@@ -835,7 +1099,7 @@ export default function CartPage() {
           textAlign: 'center',
           animation: 'fadeInUp 1s ease-out 0.2s backwards'
         }}>
-          {t('browseOurCollectionAndAddSomeItems')}
+          Browse our collection and add some delicious items!
         </p>
         <button
           onClick={() => navigate('/home')}
@@ -861,7 +1125,7 @@ export default function CartPage() {
             e.target.style.boxShadow = '0 8px 24px rgba(212, 160, 23, 0.25)'
           }}
         >
-          🛍️ {t('continueShopping')}
+          🛍️ Continue Shopping
         </button>
       </div>
     )
@@ -908,7 +1172,7 @@ export default function CartPage() {
               e.currentTarget.style.transform = 'translateX(0) scale(1)'
             }}
           >
-            ← {!isMobile && t('back')}
+            ← {!isMobile && 'Back'}
           </button>
 
           <h1 style={{
@@ -921,7 +1185,7 @@ export default function CartPage() {
             gap: '16px',
             flex: isMobile ? '1' : 'auto'
           }}>
-            🛒 {t('cart')}
+            🛒 Cart
             <span style={{
               fontSize: isMobile ? '1rem' : '1.3rem',
               fontWeight: '800',
@@ -1038,7 +1302,7 @@ export default function CartPage() {
                         fontWeight: '900',
                         textTransform: 'uppercase'
                       }}>
-                        {t('outOfStock')}
+                        Out of Stock
                       </div>
                     )}
                   </div>
@@ -1106,7 +1370,7 @@ export default function CartPage() {
                         fontSize: '0.85rem',
                         marginBottom: '1rem'
                       }}>
-                        @ {item.price.toFixed(2)} EGP {t('each')}
+                        @ {item.price.toFixed(2)} EGP each
                       </div>
 
                       {/* STOCK STATUS */}
@@ -1119,11 +1383,11 @@ export default function CartPage() {
                         fontWeight: '700'
                       }}>
                         {isOutOfStock ? (
-                          <span style={{ color: c.danger }}>❌ {t('outOfStock')}</span>
+                          <span style={{ color: c.danger }}>❌ Out of Stock</span>
                         ) : isLowStock ? (
-                          <span style={{ color: c.warning }}>⚡ {product.stock} {t('left')}</span>
+                          <span style={{ color: c.warning }}>⚡ {product.stock} Left</span>
                         ) : (
-                          <span style={{ color: c.success }}>✓ {t('inStock')}</span>
+                          <span style={{ color: c.success }}>✓ In Stock</span>
                         )}
                       </div>
 
@@ -1169,7 +1433,7 @@ export default function CartPage() {
                               e.target.style.letterSpacing = '0px'
                             }}
                           >
-                            🍬 {product.flavors.length} {t('flavors')} {expandedItem === item.id ? '▲' : '▼'}
+                            🍬 {product.flavors.length} flavors {expandedItem === item.id ? '▲' : '▼'}
                           </button>
                           {expandedItem === item.id && (
                             <div style={{
@@ -1280,7 +1544,7 @@ export default function CartPage() {
                           fontWeight: '700',
                           textTransform: 'uppercase'
                         }}>
-                          {t('maxReached')}
+                          Max Reached
                         </span>
                       )}
                     </div>
@@ -1319,7 +1583,7 @@ export default function CartPage() {
                   alignItems: 'center',
                   gap: '8px'
                 }}>
-                  📍 {t('deliveryInfo')}
+                  📍 Delivery Info
                 </h3>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem' }}>
@@ -1334,13 +1598,13 @@ export default function CartPage() {
                       textTransform: 'uppercase',
                       letterSpacing: '0.5px'
                     }}>
-                      {t('fullName')} <span style={{ color: c.danger }}>*</span>
+                      Full Name <span style={{ color: c.danger }}>*</span>
                     </label>
                     <input
                       name="name"
                       value={formData.name}
                       onChange={handleInputChange}
-                      placeholder={t('enterFullName')}
+                      placeholder="Enter your full name"
                       style={{
                         width: '100%',
                         padding: '12px 16px',
@@ -1371,7 +1635,7 @@ export default function CartPage() {
                       textTransform: 'uppercase',
                       letterSpacing: '0.5px'
                     }}>
-                      {t('phoneNumber')} <span style={{ color: c.danger }}>*</span>
+                      Phone Number <span style={{ color: c.danger }}>*</span>
                     </label>
                     <input
                       name="phone"
@@ -1409,13 +1673,13 @@ export default function CartPage() {
                       textTransform: 'uppercase',
                       letterSpacing: '0.5px'
                     }}>
-                      {t('address')} <span style={{ color: c.danger }}>*</span>
+                      Address <span style={{ color: c.danger }}>*</span>
                     </label>
                     <textarea
                       name="address"
                       value={formData.address}
                       onChange={handleInputChange}
-                      placeholder={t('enterDetailedAddress')}
+                      placeholder="Enter detailed address"
                       rows="3"
                       style={{
                         width: '100%',
@@ -1440,18 +1704,17 @@ export default function CartPage() {
                   {/* MAP - EMBEDDED WITH EDIT BUTTON */}
                   <div>
                     <label style={{
-                      display: 'block',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
                       marginBottom: '0.5rem',
                       fontSize: '0.9rem',
                       fontWeight: '700',
                       color: c.textDark,
                       textTransform: 'uppercase',
-                      letterSpacing: '0.5px',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
+                      letterSpacing: '0.5px'
                     }}>
-                      <span>{t('location')} <span style={{ color: c.danger }}>*</span></span>
+                      <span>Location <span style={{ color: c.danger }}>*</span></span>
                       <button
                         type="button"
                         onClick={handleOpenMapEditor}
@@ -1477,7 +1740,7 @@ export default function CartPage() {
                           e.currentTarget.style.boxShadow = 'none'
                         }}
                       >
-                        🗺️ {t('editLocation') || 'Edit Location'}
+                        🗺️ Edit Location
                       </button>
                     </label>
 
@@ -1492,7 +1755,7 @@ export default function CartPage() {
                         marginBottom: '0.5rem',
                         fontWeight: '700'
                       }}>
-                        ⚠️ {t('geolocationNotSupported')}
+                        ⚠️ Geolocation not available
                       </div>
                     )}
 
@@ -1511,7 +1774,7 @@ export default function CartPage() {
                           height: '100%',
                           color: c.textMuted
                         }}>
-                          {t('loading')}...
+                          Loading...
                         </div>
                       ) : mapCenter ? (
                         <iframe
@@ -1556,7 +1819,7 @@ export default function CartPage() {
                     e.target.style.boxShadow = 'none'
                   }}
                 >
-                  <span>✓</span> {t('save')}
+                  <span>✓</span> Save
                 </button>
               </form>
             )}
@@ -1573,7 +1836,7 @@ export default function CartPage() {
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '1rem' }}>
                   <h4 style={{ margin: 0, color: c.success, fontWeight: '800', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span>✓</span> {t('deliveryInfo')}
+                    <span>✓</span> Delivery Info
                   </h4>
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button
@@ -1595,7 +1858,7 @@ export default function CartPage() {
                         e.target.style.color = c.success
                       }}
                     >
-                      {t('edit')}
+                      Edit
                     </button>
                     <button
                       onClick={handleOpenMapEditor}
@@ -1616,7 +1879,7 @@ export default function CartPage() {
                         e.target.style.color = c.secondary
                       }}
                     >
-                      {t('editLocation') || '🗺️ Location'}
+                      🗺️ Location
                     </button>
                   </div>
                 </div>
@@ -1638,14 +1901,14 @@ export default function CartPage() {
               animation: 'slideInRight 0.7s ease-out'
             }}>
               <h4 style={{ margin: '0 0 1rem 0', color: c.textDark, fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                🎟️ {t('coupon')}
+                🎟️ Coupon
               </h4>
               <div style={{ display: 'flex', gap: '8px', marginBottom: appliedCoupon ? '1rem' : 0 }}>
                 <input
                   type="text"
                   value={couponInput}
                   onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
-                  placeholder={t('enterCouponCode')}
+                  placeholder="Enter coupon code"
                   disabled={appliedCoupon}
                   style={{
                     flex: 1,
@@ -1689,7 +1952,7 @@ export default function CartPage() {
                     e.target.style.transform = 'translateY(0) scale(1)'
                   }}
                 >
-                  {t('apply')}
+                  Apply
                 </button>
               </div>
               {appliedCoupon && (
@@ -1727,6 +1990,83 @@ export default function CartPage() {
               )}
             </div>
 
+            {/* ============ ADDED: PAYMENT METHOD SELECTION ============ */}
+            <div style={{
+              background: c.card,
+              padding: '1.5rem',
+              borderRadius: '14px',
+              border: `2px solid ${c.border}`,
+              boxShadow: `0 4px 12px ${c.overlay}`,
+              animation: 'slideInRight 0.75s ease-out'
+            }}>
+              <h4 style={{
+                margin: '0 0 1rem 0',
+                color: c.textDark,
+                fontWeight: '800',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                💳 Payment Method
+              </h4>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {/* Cash on Delivery */}
+                <label style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: '14px',
+                  background: paymentMethod === 'cod' ? `${c.success}15` : c.overlay,
+                  border: `2px solid ${paymentMethod === 'cod' ? c.success : c.border}`,
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease'
+                }}>
+                  <input
+                    type="radio"
+                    name="payment"
+                    value="cod"
+                    checked={paymentMethod === 'cod'}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    style={{ width: '20px', height: '20px', accentColor: c.success }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: '800', color: c.textDark }}>Cash on Delivery</div>
+                    <div style={{ fontSize: '0.8rem', color: c.textMuted }}>Pay when you receive</div>
+                  </div>
+                  <span style={{ fontSize: '1.5rem' }}>💵</span>
+                </label>
+
+                {/* Credit/Debit Card */}
+                <label style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: '14px',
+                  background: paymentMethod === 'card' ? `${c.secondary}15` : c.overlay,
+                  border: `2px solid ${paymentMethod === 'card' ? c.secondary : c.border}`,
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease'
+                }}>
+                  <input
+                    type="radio"
+                    name="payment"
+                    value="card"
+                    checked={paymentMethod === 'card'}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    style={{ width: '20px', height: '20px', accentColor: c.secondary }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: '800', color: c.textDark }}>Credit/Debit Card</div>
+                    <div style={{ fontSize: '0.8rem', color: c.textMuted }}>Secure payment via Paymob</div>
+                  </div>
+                  <span style={{ fontSize: '1.5rem' }}>💳</span>
+                </label>
+              </div>
+            </div>
+
             {/* ORDER SUMMARY */}
             <div style={{
               background: c.card,
@@ -1737,7 +2077,7 @@ export default function CartPage() {
               animation: 'slideInRight 0.8s ease-out'
             }}>
               <h4 style={{ margin: '0 0 1.25rem 0', color: c.textDark, fontWeight: '800', fontSize: '1.1rem' }}>
-                💰 {t('orderSummary')}
+                💰 Order Summary
               </h4>
               <div style={{
                 display: 'flex',
@@ -1748,24 +2088,24 @@ export default function CartPage() {
                 borderBottom: `2px solid ${c.border}`
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: c.textMuted, fontSize: '0.9rem', fontWeight: '600' }}>
-                  <span>{t('subtotal')}</span>
+                  <span>Subtotal</span>
                   <span>{totalPrice.toFixed(2)} EGP</span>
                 </div>
                 {discountAmount > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', color: c.success, fontSize: '0.9rem', fontWeight: '800', animation: 'slideDown 0.4s ease-out' }}>
-                    <span>💚 {t('discount')}</span>
+                    <span>💚 Discount</span>
                     <span>-{discountAmount.toFixed(2)} EGP</span>
                   </div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: c.textMuted, fontSize: '0.9rem', fontWeight: '600' }}>
-                  <span>{t('shipping')}</span>
+                  <span>Shipping</span>
                   <span style={{ 
                     color: shippingDetails.isFree ? c.success : c.textDark, 
                     fontWeight: '800',
                     animation: shippingDetails.isFree ? 'badgePulse 2s ease-in-out infinite' : 'none'
                   }}>
                     {shippingDetails.isFree 
-                      ? `${t('free')} 🎉` 
+                      ? `Free 🎉` 
                       : `${shippingCost.toFixed(2)} EGP`
                     }
                   </span>
@@ -1807,7 +2147,7 @@ export default function CartPage() {
                   marginBottom: '1.25rem',
                   animation: 'fadeInUp 0.6s ease-out'
                 }}>
-                  Add {(FREE_SHIPPING_THRESHOLD - totalPrice).toFixed(0)} EGP more for {t('free')} shipping!
+                  Add {(FREE_SHIPPING_THRESHOLD - totalPrice).toFixed(0)} EGP more for free shipping!
                 </p>
               )}
 
@@ -1821,7 +2161,7 @@ export default function CartPage() {
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px'
               }}>
-                <span>{t('total')}:</span>
+                <span>Total:</span>
                 <span style={{ color: c.secondary }}>{finalPrice.toFixed(2)} EGP</span>
               </div>
 
@@ -1862,7 +2202,7 @@ export default function CartPage() {
                 <span style={{ fontSize: '1.2rem' }}>
                   {isProcessing ? '⏳' : !hasDeliveryInfo ? '📝' : Object.keys(stockErrors).length > 0 ? '❌' : '💳'}
                 </span>
-                {isProcessing ? t('processing') : !hasDeliveryInfo ? t('enterDeliveryInfo') : Object.keys(stockErrors).length > 0 ? t('resolveStockIssues') : t('checkout')}
+                {isProcessing ? 'Processing' : !hasDeliveryInfo ? 'Enter Delivery Info' : Object.keys(stockErrors).length > 0 ? 'Resolve Stock Issues' : 'Checkout'}
               </button>
 
               {!canCheckout && (
@@ -1877,7 +2217,7 @@ export default function CartPage() {
                   borderRadius: '8px',
                   borderLeft: `4px solid ${c.danger}`
                 }}>
-                  {!hasDeliveryInfo ? t('completeDeliveryInfo') : t('adjustQuantitiesBeforeCheckout')}
+                  {!hasDeliveryInfo ? 'Complete delivery info' : 'Adjust quantities before checkout'}
                 </p>
               )}
             </div>
@@ -1885,7 +2225,7 @@ export default function CartPage() {
         </div>
       </div>
 
-      {/* MAP EDITOR MODAL */}
+      {/* MAP EDITOR MODAL - MUST BE AT THE END */}
       <MapEditorModal />
 
       <style>{`

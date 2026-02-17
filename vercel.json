@@ -1,19 +1,31 @@
 {
+  "version": 2,
+  "functions": {
+    "api/**/*.js": {
+      "maxDuration": 30
+    }
+  },
   "routes": [
     {
-      "src": "/api/pi/approve",
-      "dest": "/api/pi/approve.js"
+      "src": "/api/paymob/create-payment",
+      "dest": "/api/paymob/create-payment.js"
     },
     {
-      "src": "/api/pi/complete",
-      "dest": "/api/pi/complete.js"
+      "src": "/api/paymob/webhook",
+      "dest": "/api/paymob/webhook.js"
     },
     {
-      "handle": "filesystem"
-    },
+      "src": "/api/check-status",
+      "dest": "/api/check-status.js"
+    }
+  ],
+  "headers": [
     {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/api/paymob/webhook",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "POST,OPTIONS" }
+      ]
     }
   ]
 }

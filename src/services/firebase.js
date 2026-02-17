@@ -17,7 +17,6 @@ try {
   app = initializeApp(firebaseConfig)
   db = getFirestore(app)
   
-  // Enable offline persistence (optional)
   if (typeof window !== 'undefined') {
     enableIndexedDbPersistence(db).catch((err) => {
       if (err.code === 'failed-precondition') {
@@ -31,7 +30,6 @@ try {
   console.log('✅ Firebase Client initialized');
 } catch (error) {
   console.error('❌ Firebase Client init error:', error);
-  // Provide fallback
   db = null;
 }
 
