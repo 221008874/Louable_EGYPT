@@ -251,18 +251,20 @@ export default function CartPage() {
 
   // ============ FORM VALIDATION ============
     const validateForm = useCallback(() => {
-    const errors = {}
-    const phoneRegex = /^\+?[\d\s\-\(\)]{10,}$/
+  const errors = {}
+  const phoneRegex = /^\+?[\d\s\-\(\)]{10,}$/
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-    if (!formData.name.trim()) errors.name = t('nameRequired')
-    if (!formData.phone.trim() || !phoneRegex.test(formData.phone)) errors.phone = t('validPhoneRequired')
-    if (!formData.address.trim() || formData.address.trim().length < 10) errors.address = t('addressTooShort')
-    if (!formData.city.trim()) errors.city = t('cityRequired')
-    if (!formData.latitude || !formData.longitude) errors.location = t('locationRequired')
+  if (!formData.name.trim()) errors.name = t('nameRequired')
+  if (!formData.phone.trim() || !phoneRegex.test(formData.phone)) errors.phone = t('validPhoneRequired')
+  if (!formData.email.trim() || !emailRegex.test(formData.email)) errors.email = 'Valid email required' // ADDED
+  if (!formData.address.trim() || formData.address.trim().length < 10) errors.address = t('addressTooShort')
+  if (!formData.city.trim()) errors.city = t('cityRequired')
+  if (!formData.latitude || !formData.longitude) errors.location = t('locationRequired')
 
-    setFormErrors(errors)
-    return Object.keys(errors).length === 0
-  }, [formData, t])
+  setFormErrors(errors)
+  return Object.keys(errors).length === 0
+}, [formData, t])
 
   const handleInputChange = (e) => {
     const { name, value } = e.target
@@ -442,102 +444,107 @@ export default function CartPage() {
   const finalPrice = subtotal + shippingCost
 
   // ============ MODIFIED: CHECKOUT WITH PAYMOB ============
-    const handleCheckout = useCallback(async () => {
-    if (!canCheckout || Object.keys(stockErrors).length > 0) {
-      alert(t('resolveStockIssues') || 'Please resolve stock issues before checkout');
-      return;
-    }
+    // ============ CHECKOUT WITH KASHIER ============
+const handleCheckout = useCallback(async () => {
+  if (!canCheckout || Object.keys(stockErrors).length > 0) {
+    alert(t('resolveStockIssues') || 'Please resolve stock issues before checkout');
+    return;
+  }
 
-    setIsProcessing(true)
-    const orderId = `order_${Date.now()}`
-    try {
-      // Create order in Firestore
-      const orderRef = await addDoc(collection(db, 'orders_egp'), {
-        orderId,
-        userId: `guest_${Date.now()}`, // Guest checkout
-        items: items.map(item => ({
-          id: item.id,
-          name: item.name,
-          price: item.price,
-          quantity: item.quantity || 1
-        })),
-        totalPrice: finalPrice,
-        totalItems: items.reduce((sum, item) => sum + (item.quantity || 1), 0),
+  setIsProcessing(true);
+  const orderId = `order_${Date.now()}`;
+  
+  try {
+    // Create order in Firestore first
+    const orderRef = await addDoc(collection(db, 'orders_egp'), {
+      orderId,
+      userId: `guest_${Date.now()}`,
+      items: items.map(item => ({
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity || 1
+      })),
+      totalPrice: finalPrice,
+      totalItems: items.reduce((sum, item) => sum + (item.quantity || 1), 0),
+      currency: 'EGP',
+      paymentMethod: paymentMethod === 'cod' ? 'Cash on Delivery' : 'Card (Kashier)',
+      paymentStatus: paymentMethod === 'cod' ? 'pending' : 'awaiting_payment',
+      status: 'pending',
+      customerName: deliveryInfo.name,
+      customerPhone: deliveryInfo.phone,
+      customerEmail: deliveryInfo.email, // ADDED: Save email
+      customerAddress: deliveryInfo.address,
+      customerLocation: {
+        latitude: deliveryInfo.latitude,
+        longitude: deliveryInfo.longitude
+      },
+      coupon: appliedCoupon?.label || null,
+      shipping: shippingDetails,
+      createdAt: serverTimestamp()
+    });
+
+    // ============ KASHIER CARD PAYMENT ============
+    if (paymentMethod === 'card') {
+      // Import and use kashierApi
+      const { kashierApi } = await import('../api/kashier');
+      
+      const paymentResult = await kashierApi.createPayment({
+        amount: finalPrice,
         currency: 'EGP',
-        paymentMethod: paymentMethod === 'cod' ? 'Cash on Delivery' : 'Card (Paymob)',
-        paymentStatus: paymentMethod === 'cod' ? 'pending' : 'awaiting_payment',
-        status: 'pending',
-        customerName: deliveryInfo.name,
+        customerEmail: deliveryInfo.email, // NOW USING ACTUAL EMAIL
         customerPhone: deliveryInfo.phone,
-        customerAddress: deliveryInfo.address,
-        customerLocation: {
-          latitude: deliveryInfo.latitude,
-          longitude: deliveryInfo.longitude
-        },
-        coupon: appliedCoupon?.label || null,
-        shipping: shippingDetails,
-        createdAt: serverTimestamp()
-      })
+        orderId: orderId,
+        description: `Order #${orderId} - Louable Chocolates`
+      });
 
-      // ============ PAYMOB CARD PAYMENT ============
-      if (paymentMethod === 'card') {
-              const billingData = {
-        firstName: deliveryInfo.name.split(' ')[0] || deliveryInfo.name,
-        lastName: deliveryInfo.name.split(' ').slice(1).join(' ') || 'N/A',
-        email: 'customer@example.com', // Default for guest
-        phone: deliveryInfo.phone,
-        city: deliveryInfo.city || 'Cairo',
-        street: deliveryInfo.address,
-        country: 'EG',
-        redirectUrl: `${window.location.origin}/payment-callback`
+      if (paymentResult.success && paymentResult.checkoutUrl) {
+        // Store order info for after payment return
+        sessionStorage.setItem('pendingOrderId', orderId);
+        sessionStorage.setItem('pendingFirestoreId', orderRef.id);
+        
+        // Redirect to Kashier hosted checkout page
+        window.location.href = paymentResult.checkoutUrl;
+        return; // Stop here - don't clear cart yet
+      } else {
+        throw new Error('Failed to create payment session');
       }
-
-               const { iframeUrl, paymobOrderId } = await paymobService.createPayment(
-          finalPrice,
-          billingData,
-          items,
-          'EGP'
-        )
-
-        // Update order with paymobOrderId and status
-        await updateDoc(orderRef, { 
-          paymobOrderId,
-          paymentStatus: 'awaiting_payment',
-          updatedAt: serverTimestamp()
-        })
-
-        // Update order with paymobOrderId
-        await updateDoc(orderRef, { paymobOrderId })
-
-        // Store in session and redirect to Paymob
-        sessionStorage.setItem('pendingOrderId', orderId)
-        sessionStorage.setItem('pendingFirestoreId', orderRef.id)
-        sessionStorage.setItem('paymobOrderId', paymobOrderId)
-        paymobService.redirectToPayment(iframeUrl)
-        return // Don't clear cart yet, wait for payment callback
-      }
-
-      // ============ CASH ON DELIVERY ============
-      clearCart()
-      clearDeliveryInfo()
-      navigate('/order-success', {
-        state: {
-          orderId,
-          txid: `TXN-${Date.now()}`,
-          totalPrice: finalPrice,
-          items,
-          deliveryInfo,
-          shipping: shippingDetails,
-          paymentMethod: 'cod'
-        }
-      })
-    } catch (error) {
-      console.error('Checkout error:', error)
-      alert(t('checkoutFailed') + ': ' + (error.message || t('tryAgain')))
-      setIsProcessing(false)
     }
-  }, [canCheckout, items, finalPrice, deliveryInfo, appliedCoupon, shippingDetails, paymentMethod, clearCart, clearDeliveryInfo, navigate, t])
 
+    // ============ CASH ON DELIVERY ============
+    clearCart();
+    clearDeliveryInfo();
+    navigate('/order-success', {
+      state: {
+        orderId,
+        txid: `TXN-${Date.now()}`,
+        totalPrice: finalPrice,
+        items,
+        deliveryInfo,
+        shipping: shippingDetails,
+        paymentMethod: 'cod'
+      }
+    });
+
+  } catch (error) {
+    console.error('Checkout error:', error);
+    alert(t('checkoutFailed') + ': ' + (error.message || t('tryAgain')));
+    setIsProcessing(false);
+  }
+}, [
+  canCheckout, 
+  items, 
+  finalPrice, 
+  deliveryInfo, 
+  appliedCoupon, 
+  shippingDetails, 
+  paymentMethod, 
+  stockErrors,
+  t,
+  clearCart, 
+  clearDeliveryInfo, 
+  navigate
+]);
   const handleQuantityUpdate = useCallback(async (item, newQuantity) => {
     if (newQuantity < 1) {
       removeFromCart(item.id)
@@ -1672,6 +1679,43 @@ export default function CartPage() {
                     />
                     {formErrors.phone && <div style={{ color: c.danger, fontSize: '0.75rem', marginTop: '4px' }}>✕ {formErrors.phone}</div>}
                   </div>
+                  {/* EMAIL - ADD THIS FIELD */}
+<div>
+  <label style={{
+    display: 'block',
+    marginBottom: '0.5rem',
+    fontSize: '0.9rem',
+    fontWeight: '700',
+    color: c.textDark,
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px'
+  }}>
+    Email <span style={{ color: c.danger }}>*</span>
+  </label>
+  <input
+    name="email"
+    type="email"
+    value={formData.email}
+    onChange={handleInputChange}
+    placeholder="your@email.com"
+    style={{
+      width: '100%',
+      padding: '12px 16px',
+      border: `2px solid ${formErrors.email ? c.danger : c.border}`,
+      borderRadius: '12px',
+      fontSize: '1rem',
+      background: c.surface,
+      color: c.textDark,
+      fontFamily: 'inherit',
+      transition: 'all 0.3s ease'
+    }}
+    onFocus={(e) => {
+      if (!formErrors.email) e.target.style.borderColor = c.secondary
+    }}
+    onBlur={(e) => (e.target.style.borderColor = formErrors.email ? c.danger : c.border)}
+  />
+  {formErrors.email && <div style={{ color: c.danger, fontSize: '0.75rem', marginTop: '4px' }}>✕ {formErrors.email}</div>}
+</div>
 
                                    {/* ADDRESS */}
                   <div>
@@ -2097,7 +2141,32 @@ export default function CartPage() {
                   borderRadius: '12px',
                   cursor: 'pointer',
                   transition: 'all 0.3s ease'
-                }}>
+                }}>{/* Credit/Debit Card */}
+<label style={{
+  display: 'flex',
+  alignItems: 'center',
+  gap: '12px',
+  padding: '14px',
+  background: paymentMethod === 'card' ? `${c.secondary}15` : c.overlay,
+  border: `2px solid ${paymentMethod === 'card' ? c.secondary : c.border}`,
+  borderRadius: '12px',
+  cursor: 'pointer',
+  transition: 'all 0.3s ease'
+}}>
+  <input
+    type="radio"
+    name="payment"
+    value="card"
+    checked={paymentMethod === 'card'}
+    onChange={(e) => setPaymentMethod(e.target.value)}
+    style={{ width: '20px', height: '20px', accentColor: c.secondary }}
+  />
+  <div style={{ flex: 1 }}>
+    <div style={{ fontWeight: '800', color: c.textDark }}>Credit/Debit Card</div>
+    <div style={{ fontSize: '0.8rem', color: c.textMuted }}>Secure payment via Kashier</div> {/* FIXED */}
+  </div>
+  <span style={{ fontSize: '1.5rem' }}>💳</span>
+</label>
                   <input
                     type="radio"
                     name="payment"
