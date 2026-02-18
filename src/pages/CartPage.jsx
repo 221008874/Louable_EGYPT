@@ -4,7 +4,6 @@ import { useCart } from '../context/CartContext'
 import { useLanguage } from '../context/LanguageContext'
 import { useTheme } from '../context/ThemeContext'
 import { db } from '../services/firebase'
-import { paymobService } from '../services/paymob' // ADDED: Paymob service
 import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc } from 'firebase/firestore' // ADDED: updateDoc
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
