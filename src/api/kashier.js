@@ -4,21 +4,17 @@ const API_URL = import.meta.env.VITE_API_URL || '';
 export const kashierApi = {
   async createPayment(paymentData) {
     try {
-      // FIX: Don't add /api if API_URL already includes it
+      // FIX: Handle URL construction properly
       let endpoint;
       
       if (!API_URL) {
-        // Local development - use relative path
-        endpoint = '/api/payment/kashier';
-      } else if (API_URL.endsWith('/api')) {
-        // API_URL already ends with /api (e.g., http://localhost:5173/api)
-        endpoint = `${API_URL}/payment/kashier`;
+        // Local development - proxy to Vercel
+        endpoint = 'https://elhamdindustriesegp.vercel.app/api/payment/kashier';
       } else {
-        // API_URL is base URL only (e.g., https://yourdomain.com)
-        endpoint = `${API_URL}/api/payment/kashier`;
+        // Use configured API URL
+        endpoint = `${API_URL}/payment/kashier`;
       }
       
-      console.log('🚀 API_URL:', API_URL);
       console.log('🚀 Endpoint:', endpoint);
       
       const response = await fetch(endpoint, {
@@ -48,11 +44,7 @@ export const kashierApi = {
         throw new Error(data.error || 'Invalid response from server');
       }
 
-      console.log('✅ Payment session created:', {
-        orderId: data.orderId,
-        test: data.test
-      });
-
+      console.log('✅ Payment session created');
       return data;
 
     } catch (error) {
