@@ -1,18 +1,25 @@
-// src/api/kashier.js - ENHANCED VERSION
+// src/api/kashier.js - FIXED VERSION
 const API_URL = import.meta.env.VITE_API_URL || '';
 
 export const kashierApi = {
   async createPayment(paymentData) {
     try {
-      const endpoint = API_URL 
-        ? `${API_URL}/api/payment/kashier` 
-        : '/api/payment/kashier';
+      // FIX: Don't add /api if API_URL already includes it
+      let endpoint;
       
-      console.log('🚀 Sending payment request:', {
-        amount: paymentData.amount,
-        email: paymentData.customerEmail,
-        orderId: paymentData.orderId
-      });
+      if (!API_URL) {
+        // Local development - use relative path
+        endpoint = '/api/payment/kashier';
+      } else if (API_URL.endsWith('/api')) {
+        // API_URL already ends with /api (e.g., http://localhost:5173/api)
+        endpoint = `${API_URL}/payment/kashier`;
+      } else {
+        // API_URL is base URL only (e.g., https://yourdomain.com)
+        endpoint = `${API_URL}/api/payment/kashier`;
+      }
+      
+      console.log('🚀 API_URL:', API_URL);
+      console.log('🚀 Endpoint:', endpoint);
       
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -22,7 +29,12 @@ export const kashierApi = {
         body: JSON.stringify(paymentData),
       });
 
-      // Check content type
+      if (!response.ok) {
+        const text = await response.text();
+        console.error('❌ HTTP Error:', response.status, text);
+        throw new Error(`Server error: ${response.status}`);
+      }
+
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
         const text = await response.text();
@@ -32,19 +44,13 @@ export const kashierApi = {
 
       const data = await response.json();
 
-      if (!response.ok) {
-        console.error('❌ API Error:', data);
-        throw new Error(data.error || data.details || `Payment failed: ${response.status}`);
-      }
-
       if (!data.success || !data.checkoutUrl) {
-        throw new Error('Invalid response: Missing checkout URL');
+        throw new Error(data.error || 'Invalid response from server');
       }
 
       console.log('✅ Payment session created:', {
         orderId: data.orderId,
-        test: data.test,
-        url: data.checkoutUrl.substring(0, 100) + '...'
+        test: data.test
       });
 
       return data;
