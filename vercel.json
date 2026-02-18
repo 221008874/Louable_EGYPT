@@ -3,7 +3,10 @@
   "builds": [
     {
       "src": "api/**/*.js",
-      "use": "@vercel/node"
+      "use": "@vercel/node",
+      "config": {
+        "maxLambdaSize": "15mb"
+      }
     },
     {
       "src": "package.json",
@@ -27,8 +30,11 @@
       "dest": "/index.html"
     },
     {
+      "handle": "filesystem"
+    },
+    {
       "src": "/(.*)",
-      "dest": "/dist/$1"
+      "dest": "/index.html"
     }
   ]
 }
