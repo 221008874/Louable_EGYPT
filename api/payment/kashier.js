@@ -1,4 +1,4 @@
-// api/payment/kashier.js - FIXED (NO TRAILING SPACE)
+// api/payment/kashier.js - CORRECTED VERSION
 export default async function handler(req, res) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -68,10 +68,10 @@ export default async function handler(req, res) {
       });
     }
 
-    // FIXED: Removed trailing space
+    // CRITICAL: NO TRAILING SPACE - Check this character by character!
     const baseUrl = 'https://checkout.kashier.io';
     
-    // Format amount to 2 decimal places as string (Kashier requirement)
+    // Format amount to 2 decimal places as string
     const formattedAmount = numericAmount.toFixed(2);
     
     const paymentData = {
@@ -84,23 +84,18 @@ export default async function handler(req, res) {
       description: description || `Order #${orderId}`,
       returnUrl: `${FRONTEND_URL}/payment/success`,
       cancelUrl: `${FRONTEND_URL}/payment/cancel`,
-      test: 'true', // Test mode
-      metaData: JSON.stringify({
-        orderId: orderId,
-        source: 'web',
-        test: true
-      })
+      test: 'true'
     };
 
-    // Generate signature: merchantId + orderId + amount + currency + secretKey
+    // Generate signature
     const crypto = await import('crypto');
     const signatureString = `${MERCHANT_ID}${orderId}${formattedAmount}${currency}${SECRET_KEY}`;
     const signature = crypto.createHash('sha256').update(signatureString).digest('hex');
 
-    console.log('Debug - Signature String:', signatureString);
-    console.log('Debug - Generated Signature:', signature);
+    console.log('Signature String:', signatureString);
+    console.log('Signature:', signature);
 
-    // Build checkout URL with query params
+    // Build checkout URL
     const params = new URLSearchParams({
       ...paymentData,
       signature: signature
@@ -108,9 +103,9 @@ export default async function handler(req, res) {
 
     const checkoutUrl = `${baseUrl}?${params.toString()}`;
 
-    console.log('Generated Kashier URL:', checkoutUrl);
+    console.log('Checkout URL:', checkoutUrl);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       checkoutUrl: checkoutUrl,
       orderId: orderId,
@@ -121,7 +116,7 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('Kashier payment error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: 'Payment initialization failed',
       details: error.message
