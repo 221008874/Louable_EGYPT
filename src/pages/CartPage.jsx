@@ -40,6 +40,7 @@ export default function CartPage() {
   const navigate = useNavigate()
 
   // ============ MAIN STATES ============
+  
   const [isProcessing, setIsProcessing] = useState(false)
   const [appliedCoupon, setAppliedCoupon] = useState(null)
   const [couponInput, setCouponInput] = useState('')
@@ -51,8 +52,7 @@ export default function CartPage() {
   const [scrollY, setScrollY] = useState(0)
 
   // ============ ADDED: PAYMENT METHOD STATE ============
-  const [paymentMethod, setPaymentMethod] = useState('cod') // 'cod' or 'card'
-
+const [paymentMethod, setPaymentMethod] = useState('cod'); // 'cod' or 'card'
   // ============ FULL-SCREEN MAP EDITOR STATES ============
   const [showMapEditor, setShowMapEditor] = useState(false)
   const [mapEditorCenter, setMapEditorCenter] = useState(null)
@@ -250,32 +250,29 @@ export default function CartPage() {
 
   // ============ FORM VALIDATION ============
     const validateForm = useCallback(() => {
-  const errors = {}
-  const phoneRegex = /^\+?[\d\s\-\(\)]{10,}$/
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  const errors = {};
+  const phoneRegex = /^\+?[\d\s\-\(\)]{10,}$/;
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; // ADDED
 
-  if (!formData.name.trim()) errors.name = t('nameRequired')
-  if (!formData.phone.trim() || !phoneRegex.test(formData.phone)) errors.phone = t('validPhoneRequired')
-  if (!formData.email.trim() || !emailRegex.test(formData.email)) errors.email = 'Valid email required' // ADDED
-  if (!formData.address.trim() || formData.address.trim().length < 10) errors.address = t('addressTooShort')
-  if (!formData.city.trim()) errors.city = t('cityRequired')
-  if (!formData.latitude || !formData.longitude) errors.location = t('locationRequired')
-
-  setFormErrors(errors)
-  return Object.keys(errors).length === 0
-}, [formData, t])
-
-  const handleInputChange = (e) => {
-    const { name, value } = e.target
-    setFormData(prev => ({ ...prev, [name]: value }))
-    if (formErrors[name]) {
-      setFormErrors(prev => {
-        const next = { ...prev }
-        delete next[name]
-        return next
-      })
-    }
+  if (!formData.name.trim()) errors.name = t('nameRequired');
+  if (!formData.phone.trim() || !phoneRegex.test(formData.phone)) {
+    errors.phone = t('validPhoneRequired');
   }
+  // ADDED: Email validation
+  if (!formData.email?.trim() || !emailRegex.test(formData.email)) {
+    errors.email = 'Valid email required';
+  }
+  if (!formData.address.trim() || formData.address.trim().length < 10) {
+    errors.address = t('addressTooShort');
+  }
+  if (!formData.city.trim()) errors.city = t('cityRequired');
+  if (!formData.latitude || !formData.longitude) {
+    errors.location = t('locationRequired');
+  }
+
+  setFormErrors(errors);
+  return Object.keys(errors).length === 0;
+}, [formData, t]);
 
   const handleSaveDelivery = (e) => {
     e.preventDefault()
@@ -472,7 +469,7 @@ const handleCheckout = useCallback(async () => {
       status: 'pending',
       customerName: deliveryInfo.name,
       customerPhone: deliveryInfo.phone,
-      customerEmail: deliveryInfo.email, // ADDED: Save email
+      customerEmail: deliveryInfo.email, // CRITICAL: Must have email
       customerAddress: deliveryInfo.address,
       customerLocation: {
         latitude: deliveryInfo.latitude,
@@ -483,11 +480,15 @@ const handleCheckout = useCallback(async () => {
       createdAt: serverTimestamp()
     });
 
-    // ============ KASHIER CARD PAYMENT ============
+    // KASHIER CARD PAYMENT
     if (paymentMethod === 'card') {
-      // Import and use kashierApi
       const { kashierApi } = await import('../api/kashier');
       
+      // CRITICAL: Ensure email exists
+      if (!deliveryInfo.email) {
+        throw new Error('Email is required for card payments');
+      }
+
       const paymentResult = await kashierApi.createPayment({
         amount: finalPrice,
         currency: 'EGP',
@@ -510,7 +511,7 @@ const handleCheckout = useCallback(async () => {
       }
     }
 
-    // ============ CASH ON DELIVERY ============
+    // CASH ON DELIVERY
     clearCart();
     clearDeliveryInfo();
     navigate('/order-success', {
@@ -2081,107 +2082,81 @@ const handleCheckout = useCallback(async () => {
               )}
             </div>
 
-            {/* ============ ADDED: PAYMENT METHOD SELECTION ============ */}
             <div style={{
-              background: c.card,
-              padding: '1.5rem',
-              borderRadius: '14px',
-              border: `2px solid ${c.border}`,
-              boxShadow: `0 4px 12px ${c.overlay}`,
-              animation: 'slideInRight 0.75s ease-out'
-            }}>
-              <h4 style={{
-                margin: '0 0 1rem 0',
-                color: c.textDark,
-                fontWeight: '800',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}>
-                💳 Payment Method
-              </h4>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {/* Cash on Delivery */}
-                <label style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  padding: '14px',
-                  background: paymentMethod === 'cod' ? `${c.success}15` : c.overlay,
-                  border: `2px solid ${paymentMethod === 'cod' ? c.success : c.border}`,
-                  borderRadius: '12px',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease'
-                }}>
-                  <input
-                    type="radio"
-                    name="payment"
-                    value="cod"
-                    checked={paymentMethod === 'cod'}
-                    onChange={(e) => setPaymentMethod(e.target.value)}
-                    style={{ width: '20px', height: '20px', accentColor: c.success }}
-                  />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: '800', color: c.textDark }}>Cash on Delivery</div>
-                    <div style={{ fontSize: '0.8rem', color: c.textMuted }}>Pay when you receive</div>
-                  </div>
-                  <span style={{ fontSize: '1.5rem' }}>💵</span>
-                </label>
-
-                {/* Credit/Debit Card */}
-                <label style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  padding: '14px',
-                  background: paymentMethod === 'card' ? `${c.secondary}15` : c.overlay,
-                  border: `2px solid ${paymentMethod === 'card' ? c.secondary : c.border}`,
-                  borderRadius: '12px',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease'
-                }}>{/* Credit/Debit Card */}
-<label style={{
-  display: 'flex',
-  alignItems: 'center',
-  gap: '12px',
-  padding: '14px',
-  background: paymentMethod === 'card' ? `${c.secondary}15` : c.overlay,
-  border: `2px solid ${paymentMethod === 'card' ? c.secondary : c.border}`,
-  borderRadius: '12px',
-  cursor: 'pointer',
-  transition: 'all 0.3s ease'
+  background: c.card,
+  padding: '1.5rem',
+  borderRadius: '14px',
+  border: `2px solid ${c.border}`,
+  boxShadow: `0 4px 12px ${c.overlay}`,
+  animation: 'slideInRight 0.75s ease-out'
 }}>
-  <input
-    type="radio"
-    name="payment"
-    value="card"
-    checked={paymentMethod === 'card'}
-    onChange={(e) => setPaymentMethod(e.target.value)}
-    style={{ width: '20px', height: '20px', accentColor: c.secondary }}
-  />
-  <div style={{ flex: 1 }}>
-    <div style={{ fontWeight: '800', color: c.textDark }}>Credit/Debit Card</div>
-    <div style={{ fontSize: '0.8rem', color: c.textMuted }}>Secure payment via Kashier</div> {/* FIXED */}
+  <h4 style={{
+    margin: '0 0 1rem 0',
+    color: c.textDark,
+    fontWeight: '800',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px'
+  }}>
+    💳 Payment Method
+  </h4>
+
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+    {/* Cash on Delivery */}
+    <label style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: '12px',
+      padding: '14px',
+      background: paymentMethod === 'cod' ? `${c.success}15` : c.overlay,
+      border: `2px solid ${paymentMethod === 'cod' ? c.success : c.border}`,
+      borderRadius: '12px',
+      cursor: 'pointer',
+      transition: 'all 0.3s ease'
+    }}>
+      <input
+        type="radio"
+        name="payment"
+        value="cod"
+        checked={paymentMethod === 'cod'}
+        onChange={(e) => setPaymentMethod(e.target.value)}
+        style={{ width: '20px', height: '20px', accentColor: c.success }}
+      />
+      <div style={{ flex: 1 }}>
+        <div style={{ fontWeight: '800', color: c.textDark }}>Cash on Delivery</div>
+        <div style={{ fontSize: '0.8rem', color: c.textMuted }}>Pay when you receive</div>
+      </div>
+      <span style={{ fontSize: '1.5rem' }}>💵</span>
+    </label>
+
+    {/* Credit/Debit Card - FIXED: Removed duplicate label */}
+    <label style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: '12px',
+      padding: '14px',
+      background: paymentMethod === 'card' ? `${c.secondary}15` : c.overlay,
+      border: `2px solid ${paymentMethod === 'card' ? c.secondary : c.border}`,
+      borderRadius: '12px',
+      cursor: 'pointer',
+      transition: 'all 0.3s ease'
+    }}>
+      <input
+        type="radio"
+        name="payment"
+        value="card"
+        checked={paymentMethod === 'card'}
+        onChange={(e) => setPaymentMethod(e.target.value)}
+        style={{ width: '20px', height: '20px', accentColor: c.secondary }}
+      />
+      <div style={{ flex: 1 }}>
+        <div style={{ fontWeight: '800', color: c.textDark }}>Credit/Debit Card</div>
+        <div style={{ fontSize: '0.8rem', color: c.textMuted }}>Secure payment via Kashier</div>
+      </div>
+      <span style={{ fontSize: '1.5rem' }}>💳</span>
+    </label>
   </div>
-  <span style={{ fontSize: '1.5rem' }}>💳</span>
-</label>
-                  <input
-                    type="radio"
-                    name="payment"
-                    value="card"
-                    checked={paymentMethod === 'card'}
-                    onChange={(e) => setPaymentMethod(e.target.value)}
-                    style={{ width: '20px', height: '20px', accentColor: c.secondary }}
-                  />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: '800', color: c.textDark }}>Credit/Debit Card</div>
-                    <div style={{ fontSize: '0.8rem', color: c.textMuted }}>Secure payment via Paymob</div>
-                  </div>
-                  <span style={{ fontSize: '1.5rem' }}>💳</span>
-                </label>
-              </div>
-            </div>
+</div>
 
             {/* ORDER SUMMARY */}
             <div style={{
