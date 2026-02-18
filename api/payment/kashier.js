@@ -68,7 +68,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // CRITICAL: NO TRAILING SPACE - Check this character by character!
+    // FIXED: Removed trailing space
     const baseUrl = 'https://checkout.kashier.io';
     
     // Format amount to 2 decimal places as string
