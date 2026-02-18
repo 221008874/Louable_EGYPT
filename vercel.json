@@ -18,6 +18,10 @@
   ],
   "routes": [
     {
+      "src": "/api/payment/kashier",
+      "dest": "/api/payment/kashier.js"
+    },
+    {
       "src": "/api/(.*)",
       "dest": "/api/$1"
     },
