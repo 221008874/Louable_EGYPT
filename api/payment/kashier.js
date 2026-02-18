@@ -1,4 +1,4 @@
-// Initialize Kashier payment session - FIXED VERSION
+// api/payment/kashier.js - FIXED FOR TESTING
 export default async function handler(req, res) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -27,6 +27,14 @@ export default async function handler(req, res) {
     if (!amount || !customerEmail || !orderId) {
       return res.status(400).json({
         error: 'Missing required fields: amount, customerEmail, orderId'
+      });
+    }
+
+    // Validate amount is a valid number
+    const numericAmount = parseFloat(amount);
+    if (isNaN(numericAmount) || numericAmount <= 0) {
+      return res.status(400).json({
+        error: 'Invalid amount'
       });
     }
 
@@ -60,13 +68,19 @@ export default async function handler(req, res) {
       });
     }
 
-    // FIXED: Removed trailing space and use correct Kashier checkout URL
-    // Kashier uses hosted checkout page with query parameters
+    // CRITICAL FIXES:
+    // 1. No trailing space in URL
+    // 2. Amount must be string with exactly 2 decimal places
+    // 3. Proper signature calculation
+    
     const baseUrl = 'https://checkout.kashier.io';
+    
+    // Format amount to 2 decimal places as string (Kashier requirement)
+    const formattedAmount = numericAmount.toFixed(2);
     
     const paymentData = {
       merchantId: MERCHANT_ID,
-      amount: amount.toString(), // Kashier expects string
+      amount: formattedAmount, // "100.00" format
       currency: currency,
       orderId: orderId,
       customerEmail: customerEmail,
@@ -74,13 +88,23 @@ export default async function handler(req, res) {
       description: description || `Order #${orderId}`,
       returnUrl: `${FRONTEND_URL}/payment/success`,
       cancelUrl: `${FRONTEND_URL}/payment/cancel`,
-      test: 'true' // Remove in production
+      test: 'true', // CRITICAL: Always test mode for now
+      // Optional: Add metadata for tracking
+      metaData: JSON.stringify({
+        orderId: orderId,
+        source: 'web',
+        test: true
+      })
     };
 
-    // Generate signature (Kashier format: merchantId + orderId + amount + currency + secretKey)
+    // Generate signature: merchantId + orderId + amount + currency + secretKey
+    // CRITICAL: Use exact string concatenation, no extra spaces
     const crypto = await import('crypto');
-    const signatureString = `${MERCHANT_ID}${orderId}${amount}${currency}${SECRET_KEY}`;
+    const signatureString = `${MERCHANT_ID}${orderId}${formattedAmount}${currency}${SECRET_KEY}`;
     const signature = crypto.createHash('sha256').update(signatureString).digest('hex');
+
+    console.log('Debug - Signature String:', signatureString); // Remove in production
+    console.log('Debug - Generated Signature:', signature); // Remove in production
 
     // Build checkout URL with query params
     const params = new URLSearchParams({
@@ -90,14 +114,15 @@ export default async function handler(req, res) {
 
     const checkoutUrl = `${baseUrl}?${params.toString()}`;
 
-    console.log('Generated Kashier URL:', checkoutUrl); // Debug log
+    console.log('Generated Kashier URL:', checkoutUrl); // Debug
 
     res.status(200).json({
       success: true,
       checkoutUrl: checkoutUrl,
       orderId: orderId,
-      amount: amount,
-      currency: currency
+      amount: formattedAmount,
+      currency: currency,
+      test: true
     });
 
   } catch (error) {
