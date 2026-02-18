@@ -1,14 +1,69 @@
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { useTheme } from '../context/ThemeContext'
 import { useLanguage } from '../context/LanguageContext'
+import { useCart } from '../context/CartContext'
+import { db } from '../services/firebase'
+import { doc, updateDoc, getDoc } from 'firebase/firestore'
 
-export default function OrderSuccess() {
-  const location = useLocation()
+export default function PaymentSuccess() {
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const { theme } = useTheme()
   const { t } = useLanguage()
+  const { clearCart } = useCart()
   
-  const { orderId, txid, totalPrice, items } = location.state || {}
+  const [loading, setLoading] = useState(true)
+  const [orderData, setOrderData] = useState(null)
+  const [error, setError] = useState(null)
+
+  // Get Kashier response parameters
+  const paymentRef = searchParams.get('paymentRef')
+  const orderId = searchParams.get('orderId') || sessionStorage.getItem('pendingOrderId')
+  
+  useEffect(() => {
+    const verifyPayment = async () => {
+      try {
+        // Get pending order from session storage
+        const pendingOrderId = sessionStorage.getItem('pendingOrderId')
+        const pendingFirestoreId = sessionStorage.getItem('pendingFirestoreId')
+        
+        if (!pendingOrderId || !pendingFirestoreId) {
+          setError('No pending order found')
+          setLoading(false)
+          return
+        }
+
+        // Update order status in Firestore
+        const orderRef = doc(db, 'orders_egp', pendingFirestoreId)
+        await updateDoc(orderRef, {
+          paymentStatus: 'paid',
+          paymentRef: paymentRef,
+          paidAt: new Date().toISOString(),
+          status: 'confirmed'
+        })
+
+        // Get updated order data
+        const orderSnap = await getDoc(orderRef)
+        if (orderSnap.exists()) {
+          setOrderData(orderSnap.data())
+        }
+
+        // Clear cart and session storage
+        clearCart()
+        sessionStorage.removeItem('pendingOrderId')
+        sessionStorage.removeItem('pendingFirestoreId')
+
+        setLoading(false)
+      } catch (err) {
+        console.error('Payment verification error:', err)
+        setError('Failed to verify payment')
+        setLoading(false)
+      }
+    }
+
+    verifyPayment()
+  }, [paymentRef, orderId, clearCart])
 
   const colors = {
     light: {
@@ -35,8 +90,54 @@ export default function OrderSuccess() {
 
   const c = theme === 'light' ? colors.light : colors.dark
 
-  if (!orderId) {
-    return navigate('/home')
+  if (loading) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        background: c.background,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexDirection: 'column',
+        gap: '20px'
+      }}>
+        <div style={{ fontSize: '3rem', animation: 'spin 1s linear infinite' }}>⏳</div>
+        <p style={{ color: c.textLight }}>Verifying payment...</p>
+        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        background: c.background,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '2rem',
+        textAlign: 'center'
+      }}>
+        <div style={{ fontSize: '5rem', marginBottom: '1rem' }}>❌</div>
+        <h1 style={{ color: c.textDark, marginBottom: '1rem' }}>Payment Verification Failed</h1>
+        <p style={{ color: c.textLight, marginBottom: '2rem' }}>{error}</p>
+        <button
+          onClick={() => navigate('/cart')}
+          style={{
+            padding: '12px 24px',
+            background: c.secondary,
+            color: 'white',
+            border: 'none',
+            borderRadius: '8px',
+            cursor: 'pointer'
+          }}
+        >
+          Return to Cart
+        </button>
+      </div>
+    )
   }
 
   return (
@@ -64,7 +165,7 @@ export default function OrderSuccess() {
         marginBottom: '1rem',
         fontWeight: '700'
       }}>
-        {t('orderConfirmed')}
+        Payment Successful!
       </h1>
       
       <p style={{
@@ -72,7 +173,7 @@ export default function OrderSuccess() {
         color: c.textLight,
         marginBottom: '2rem'
       }}>
-        {t('thankYouPurchase')}
+        Thank you for your purchase. Your order has been confirmed.
       </p>
       
       <div style={{
@@ -85,18 +186,20 @@ export default function OrderSuccess() {
         marginBottom: '2rem'
       }}>
         <div style={{ marginBottom: '1rem' }}>
-          <span style={{ color: c.textLight }}>{t('orderId')} </span>
+          <span style={{ color: c.textLight }}>Order ID: </span>
           <strong style={{ color: c.textDark, fontFamily: 'monospace' }}>
-            {orderId}
+            {orderData?.orderId || orderId}
           </strong>
         </div>
         
-        <div style={{ marginBottom: '1rem' }}>
-          <span style={{ color: c.textLight }}>{t('transaction')} </span>
-          <strong style={{ color: c.textDark, fontFamily: 'monospace', fontSize: '0.9rem' }}>
-            {txid?.substring(0, 20)}...
-          </strong>
-        </div>
+        {paymentRef && (
+          <div style={{ marginBottom: '1rem' }}>
+            <span style={{ color: c.textLight }}>Payment Ref: </span>
+            <strong style={{ color: c.textDark, fontFamily: 'monospace', fontSize: '0.9rem' }}>
+              {paymentRef}
+            </strong>
+          </div>
+        )}
         
         <div style={{
           padding: '1rem',
@@ -104,39 +207,11 @@ export default function OrderSuccess() {
           borderRadius: '8px',
           marginTop: '1rem'
         }}>
-          <span style={{ color: c.textLight }}>{t('totalPaid')} </span>
+          <span style={{ color: c.textLight }}>Total Paid: </span>
           <strong style={{ color: c.secondary, fontSize: '1.5rem' }}>
-            {totalPrice?.toFixed(2)} EGP
+            {orderData?.totalPrice?.toFixed(2) || '0.00'} EGP
           </strong>
         </div>
-
-        {items && items.length > 0 && (
-          <div style={{
-            marginTop: '1.5rem',
-            paddingTop: '1.5rem',
-            borderTop: `1px solid ${c.border}`,
-            textAlign: 'left'
-          }}>
-            <h3 style={{ color: c.textDark, marginBottom: '1rem' }}>
-              {t('orderDetails')}
-            </h3>
-            {items.map((item, index) => (
-              <div key={index} style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                marginBottom: '0.5rem',
-                fontSize: '0.9rem'
-              }}>
-                <span style={{ color: c.textLight }}>
-                  {item.name} x {item.quantity || 1}
-                </span>
-                <span style={{ color: c.textDark, fontWeight: '700' }}>
-                  {((item.price || 0) * (item.quantity || 1)).toFixed(2)} EGP
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
       
       <button
@@ -156,7 +231,7 @@ export default function OrderSuccess() {
         onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
         onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
       >
-        🛍️ {t('continueShopping')}
+        🛍️ Continue Shopping
       </button>
       
       <style>{`
