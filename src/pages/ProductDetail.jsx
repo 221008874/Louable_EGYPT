@@ -1,10 +1,11 @@
-// src/pages/ProductDetail_RESPONSIVE.jsx
+// src/pages/ProductDetail.jsx
 // Enhanced version with improved responsive design, STOCK MANAGEMENT, and premium aesthetics
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useLanguage } from '../context/LanguageContext'
 import { useCart } from '../context/CartContext'
 import { useTheme } from '../context/ThemeContext'
+import { useLocation } from '../context/LocationContext'
 import { db } from '../services/firebase'
 import { doc, getDoc } from 'firebase/firestore'
 
@@ -14,6 +15,8 @@ export default function ProductDetail() {
   const { t, lang } = useLanguage()
   const { addToCart } = useCart()
   const { theme, getImage } = useTheme()
+  const { currency } = useLocation()
+  
   const [product, setProduct] = useState(null)
   const [quantity, setQuantity] = useState(1)
   const [selectedFlavor, setSelectedFlavor] = useState(null)
@@ -73,7 +76,9 @@ export default function ProductDetail() {
 
     const fetchProduct = async () => {
       try {
-        const docRef = doc(db, 'products_egp', id)
+        // Use currency-specific collection
+        const collectionName = currency === 'USD' ? 'products_dollar' : 'products_egp'
+        const docRef = doc(db, collectionName, id)
 
         const docSnap = await getDoc(docRef)
         if (docSnap.exists()) {
@@ -90,8 +95,11 @@ export default function ProductDetail() {
         navigate('/home')
       }
     }
-    fetchProduct()
-  }, [id, navigate])
+    
+    if (currency) {
+      fetchProduct()
+    }
+  }, [id, navigate, currency]) // Refetch when currency changes
 
   // Stock calculations
   const stock = product?.stock || 0
@@ -100,6 +108,9 @@ export default function ProductDetail() {
   const canAddToCart = stock >= quantity
   const rating = product?.rating || 4.8
   const reviews = product?.reviews || 245
+
+  // Get currency symbol for display
+  const getCurrencySymbol = () => currency === 'USD' ? '$' : 'EGP'
 
   if (!product) {
     return (
@@ -156,7 +167,7 @@ export default function ProductDetail() {
     if (isOutOfStock || !canAddToCart) return
     
     for (let i = 0; i < quantity; i++) {
-      addToCart({ ...product, selectedFlavor })
+      addToCart({ ...product, selectedFlavor, currency })
     }
     
     setShowAddedNotification(true)
@@ -512,7 +523,7 @@ export default function ProductDetail() {
                 )}
               </div>
 
-              {/* Price Display - UPDATED FOR EGP */}
+              {/* Price Display - DYNAMIC CURRENCY */}
               <div style={{
                 background: `linear-gradient(135deg, ${c.secondary}20, ${c.secondary}10)`,
                 padding: '16px 20px',
@@ -537,8 +548,18 @@ export default function ProductDetail() {
                   fontWeight: '800', 
                   margin: 0
                 }}>
-                  {product.price.toFixed(2)} EGP
+                  {getCurrencySymbol()} {product.price.toFixed(2)}
                 </p>
+                {currency === 'USD' && product.originalPriceUSD && (
+                  <p style={{
+                    fontSize: '0.85rem',
+                    color: c.textLight,
+                    margin: '4px 0 0 0',
+                    textDecoration: 'line-through'
+                  }}>
+                    Was ${product.originalPriceUSD.toFixed(2)}
+                  </p>
+                )}
               </div>
             </div>
 

@@ -1,10 +1,11 @@
 // This is the complete professional animations file
 // Copy and replace your existing Home.jsx with this file
-
+import { useLocation as useRouterLocation } from 'react-router-dom'
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useTheme } from '../context/ThemeContext'
 import { useCart } from '../context/CartContext'
 import { useLanguage } from '../context/LanguageContext'
+import { useLocation } from '../context/LocationContext'
 import ProductCard from '../components/ProductCard'
 import { Link, useNavigate } from 'react-router-dom'
 import { db } from '../services/firebase'
@@ -20,6 +21,9 @@ export default function Home() {
   const { totalItems } = useCart()
   const { t, lang, toggleLanguage } = useLanguage()
   const navigate = useNavigate()
+  const { currency } = useLocation()
+  const routerLocation = useRouterLocation()
+  
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024)
@@ -36,6 +40,9 @@ export default function Home() {
     values: false,
     products: new Set()
   })
+
+  // Get detected location info from navigation state (passed from Splash)
+  const detectedInfo = routerLocation.state || {}
 
   const colors = {
     light: {
@@ -119,23 +126,44 @@ export default function Home() {
     return () => observer.disconnect()
   }, [isMobile, products.length])
 
+  // SINGLE currency-aware fetch effect - REMOVED the duplicate
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        const querySnapshot = await getDocs(collection(db, 'products_egp'))
+        setLoading(true)
+        // Use currency-specific collection
+        const collectionName = currency === 'USD' ? 'products_dollar' : 'products_egp'
+        console.log(`Fetching from collection: ${collectionName} (currency: ${currency})`)
+        
+        const querySnapshot = await getDocs(collection(db, collectionName))
         const productList = querySnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         }))
         setProducts(productList)
+        console.log(`Loaded ${productList.length} products from ${collectionName}`)
       } catch (err) {
         console.error('Failed to load products:', err)
       } finally {
         setLoading(false)
       }
     }
-    fetchProducts()
-  }, [])
+    
+    // Only fetch when currency is determined
+    if (currency) {
+      fetchProducts()
+    }
+  }, [currency]) // Refetch when currency changes
+
+  // Show currency badge in header
+  const getCurrencyDisplay = () => {
+    if (currency === 'USD') {
+      return { flag: '💵', text: 'International Store', symbol: 'USD' }
+    }
+    return { flag: '🇪🇬', text: 'Egypt Store', symbol: 'EGP' }
+  }
+
+  const currencyInfo = getCurrencyDisplay()
 
   if (loading) {
     return (
@@ -171,6 +199,16 @@ export default function Home() {
         </div>
         <p style={{ fontWeight: '600', letterSpacing: '1px', textAlign: 'center' }}>
           {t('loadingPremiumChocolates')}
+        </p>
+        <p style={{ 
+          fontSize: '0.9rem', 
+          color: c.textLight,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        }}>
+          <span>{currencyInfo.flag}</span>
+          Loading {currencyInfo.symbol} Store...
         </p>
         <style>{`
           @keyframes spin {
@@ -215,6 +253,43 @@ export default function Home() {
             : 'linear-gradient(to bottom, rgba(26,20,18,0.2), rgba(46,27,27,0.7))',
           transition: 'background 0.3s ease'
         }} />
+
+        {/* Currency Badge - Top Right */}
+        <div style={{
+          position: 'absolute',
+          top: isMobile ? '80px' : '100px',
+          right: '20px',
+          background: 'rgba(0,0,0,0.6)',
+          backdropFilter: 'blur(10px)',
+          padding: '10px 16px',
+          borderRadius: '24px',
+          border: '2px solid rgba(212, 160, 23, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          zIndex: 20,
+          animation: 'slideInRight 0.8s ease-out'
+        }}>
+          <span style={{ fontSize: '1.3rem' }}>{currencyInfo.flag}</span>
+          <div style={{ textAlign: 'left' }}>
+            <div style={{ 
+              fontSize: '0.7rem', 
+              color: '#D4A017', 
+              fontWeight: '700',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px'
+            }}>
+              {currencyInfo.text}
+            </div>
+            <div style={{ 
+              fontSize: '0.85rem', 
+              color: '#F8F4F0', 
+              fontWeight: '600' 
+            }}>
+              {currencyInfo.symbol}
+            </div>
+          </div>
+        </div>
 
         {!isSmallMobile && (
           <>
@@ -911,6 +986,22 @@ export default function Home() {
               margin: '0 auto',
               borderRadius: '2px'
             }}></div>
+            {/* Currency indicator */}
+            <div style={{
+              marginTop: '1rem',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 16px',
+              background: c.card,
+              borderRadius: '20px',
+              border: `2px solid ${c.border}`,
+              fontSize: '0.85rem',
+              color: c.textLight
+            }}>
+              <span>{currencyInfo.flag}</span>
+              <span>Showing prices in {currencyInfo.symbol}</span>
+            </div>
           </div>
 
           {products.length === 0 ? (
@@ -925,6 +1016,9 @@ export default function Home() {
               </div>
               <p style={{ fontSize: isMobile ? '1.1rem' : 'clamp(1.2rem, 3vw, 1.5rem)', fontFamily: 'Georgia, serif', fontWeight: '600' }}>
                 {t('noProductsAvailable')}
+              </p>
+              <p style={{ fontSize: '0.9rem', marginTop: '0.5rem' }}>
+                No products found in {currencyInfo.symbol} store
               </p>
             </div>
           ) : (
@@ -1108,6 +1202,9 @@ export default function Home() {
           <p style={{ margin: 0, fontSize: isMobile ? '0.85rem' : 'clamp(0.9rem, 2.5vw, 1rem)', opacity: 0.85 }}>
             © {new Date().getFullYear()} {t('Louable')}. {t('allRightsReserved')}.
           </p>
+          <p style={{ margin: '8px 0 0 0', fontSize: '0.75rem', opacity: 0.6, color: c.textLight }}>
+            Operating in {currencyInfo.symbol} • {currencyInfo.text}
+          </p>
         </div>
       </footer>
 
@@ -1176,6 +1273,11 @@ export default function Home() {
         @keyframes socialFloat {
           from { opacity: 0; transform: translateY(20px) scale(0.8); }
           to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        @keyframes slideInRight {
+          from { opacity: 0; transform: translateX(50px); }
+          to { opacity: 1; transform: translateX(0); }
         }
 
         @media (prefers-reduced-motion: reduce) {

@@ -1,18 +1,38 @@
-// src/pages/Splash.jsx
 import { useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation as useRouterLocation } from 'react-router-dom'
 import { useTheme } from '../context/ThemeContext'
+import { useLocation } from '../context/LocationContext'
 
 export default function Splash() {
   const navigate = useNavigate()
+  const routerLocation = useRouterLocation()
   const { getImage } = useTheme()
+  const { currency, country, setLoading } = useLocation()
+
+  // Get detected location from navigation state
+  const detectedData = routerLocation.state || {}
 
   useEffect(() => {
+    // Update context with detected data if passed
+    if (detectedData.detectedCurrency) {
+      // Currency is already set in context from LocationSplash
+    }
+
     const timer = setTimeout(() => {
       navigate('/home')
     }, 3000)
+
     return () => clearTimeout(timer)
-  }, [navigate])
+  }, [navigate, detectedData])
+
+  const getCurrencyDisplay = () => {
+    if (currency === 'EGP') {
+      return { flag: '🇪🇬', text: 'Egypt Store', symbol: 'EGP' }
+    }
+    return { flag: '💵', text: 'International Store', symbol: 'USD' }
+  }
+
+  const currencyInfo = getCurrencyDisplay()
 
   return (
     <div style={{
@@ -59,18 +79,41 @@ export default function Splash() {
         animation: 'pulse 5s ease-in-out infinite reverse, drift 25s ease-in-out infinite reverse'
       }}></div>
 
+      {/* Currency Badge */}
       <div style={{
         position: 'absolute',
-        top: '50%',
-        left: '50%',
-        width: 'clamp(250px, 50vw, 400px)',
-        height: 'clamp(250px, 50vw, 400px)',
-        background: 'radial-gradient(circle, rgba(93, 64, 55, 0.3) 0%, transparent 70%)',
-        borderRadius: '50%',
-        filter: 'blur(clamp(50px, 12vw, 60px))',
-        animation: 'pulse 3.5s ease-in-out infinite, drift 15s ease-in-out infinite',
-        transform: 'translate(-50%, -50%)'
-      }}></div>
+        top: '10%',
+        right: '5%',
+        background: 'rgba(0,0,0,0.4)',
+        backdropFilter: 'blur(10px)',
+        padding: '12px 20px',
+        borderRadius: '30px',
+        border: '2px solid rgba(212, 160, 23, 0.5)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        animation: 'slideInRight 0.8s ease-out'
+      }}>
+        <span style={{ fontSize: '1.5rem' }}>{currencyInfo.flag}</span>
+        <div style={{ textAlign: 'left' }}>
+          <div style={{ 
+            fontSize: '0.75rem', 
+            color: '#D4A017', 
+            fontWeight: '700',
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px'
+          }}>
+            {currencyInfo.text}
+          </div>
+          <div style={{ 
+            fontSize: '0.9rem', 
+            color: '#F8F4F0', 
+            fontWeight: '600' 
+          }}>
+            {currencyInfo.symbol}
+          </div>
+        </div>
+      </div>
 
       {/* Sparkle effects */}
       <div style={{
@@ -89,15 +132,6 @@ export default function Splash() {
         fontSize: 'clamp(0.8rem, 2.5vw, 1.2rem)',
         animation: 'sparkle 2.5s ease-in-out infinite 0.5s, float 3.5s ease-in-out infinite',
         opacity: 0.7
-      }}>✨</div>
-      
-      <div style={{
-        position: 'absolute',
-        top: '40%',
-        left: '20%',
-        fontSize: 'clamp(0.7rem, 2vw, 1rem)',
-        animation: 'sparkle 3s ease-in-out infinite 1s, float 4s ease-in-out infinite',
-        opacity: 0.6
       }}>✨</div>
 
       {/* Main Content Container */}
@@ -138,7 +172,7 @@ export default function Splash() {
           }}></div>
         </div>
 
-        {/* Brand Name with enhanced styling */}
+        {/* Brand Name */}
         <h1 style={{
           fontSize: 'clamp(2.5rem, 10vw, 4.5rem)',
           fontWeight: '800',
@@ -166,7 +200,7 @@ export default function Splash() {
           borderRadius: '2px'
         }}></div>
 
-        {/* Tagline with typewriter effect */}
+        {/* Tagline */}
         <p style={{
           fontSize: 'clamp(1rem, 4vw, 1.5rem)',
           color: '#F8F4F0',
@@ -182,6 +216,23 @@ export default function Splash() {
         }}>
           Your Premium Chocolate Experience
         </p>
+
+        {/* Location Info (if available) */}
+        {country && (
+          <div style={{
+            background: 'rgba(0,0,0,0.3)',
+            backdropFilter: 'blur(10px)',
+            padding: '10px 20px',
+            borderRadius: '20px',
+            border: '1px solid rgba(212, 160, 23, 0.3)',
+            animation: 'fadeInUp 0.8s ease-out 0.8s backwards',
+            marginBottom: '20px'
+          }}>
+            <span style={{ color: '#F8F4F0', fontSize: '0.9rem' }}>
+              📍 Detected: {country}
+            </span>
+          </div>
+        )}
 
         {/* Enhanced Loading Spinner */}
         <div style={{
@@ -227,7 +278,7 @@ export default function Splash() {
           letterSpacing: '2px',
           textTransform: 'uppercase'
         }}>
-          Loading...
+          Loading {currencyInfo.symbol} Store...
         </p>
       </div>
 
@@ -359,6 +410,28 @@ export default function Splash() {
           from {
             opacity: 0;
             transform: translateY(30px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @keyframes slideInRight {
+          from {
+            opacity: 0;
+            transform: translateX(50px);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+
+        @keyframes fadeInUp {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
           }
           to {
             opacity: 1;
