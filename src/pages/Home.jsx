@@ -1148,9 +1148,12 @@ export default function Home() {
                 louablefactory@gmail.com
               </p>
               <p style={{ margin: '0 0 0.8rem 0', display: 'flex', alignItems: 'center', gap: '10px', justifyContent: isMobile ? 'center' : 'flex-start' }}>
-                <span>📱</span>
-                +20 108 061 6273
-              </p>
+  <span>📱</span>
+  {/* Add direction: 'ltr' and unicodeBidi: 'embed' to force left-to-right display */}
+  <span style={{ direction: 'ltr', unicodeBidi: 'embed' }}>
+    {t('phoneNumber')}
+  </span>
+</p>
             </div>
           </div>
 

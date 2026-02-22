@@ -169,6 +169,7 @@ const translations = {
     validPhoneRequired: 'يرجى إدخال رقم هاتف صالح',
     addressRequired: 'العنوان التفصيلي مطلوب',
     locationRequired: 'يرجى تحديد موقعك على الخريطة',
+    phoneNumber:'+20 108 061 6273',
   },
   en: {
     // App & Brand
@@ -336,6 +337,7 @@ const translations = {
     validPhoneRequired: 'Please enter a valid phone number',
     addressRequired: 'Detailed address is required',
     locationRequired: 'Please select your location on the map',
+    phoneNumber:'+20 108 061 6273',
   }
 }
 
