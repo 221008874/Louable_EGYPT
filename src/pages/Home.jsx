@@ -1149,7 +1149,7 @@ export default function Home() {
               </p>
               <p style={{ margin: '0 0 0.8rem 0', display: 'flex', alignItems: 'center', gap: '10px', justifyContent: isMobile ? 'center' : 'flex-start' }}>
                 <span>📱</span>
-                +20 123 456 7890
+                +20 108 061 6273
               </p>
             </div>
           </div>
@@ -1160,12 +1160,14 @@ export default function Home() {
             </h4>
             <div style={{ display: 'flex', gap: isMobile ? '0.8rem' : 'clamp(0.8rem, 2vw, 1.2rem)', flexWrap: 'wrap', justifyContent: isMobile ? 'center' : 'flex-start' }}>
               {[
-                { icon: facebookIcon, name: 'Facebook' },
-                { icon: instagramIcon, name: 'Instagram' },
-                { icon: twitterIcon, name: 'Twitter' },
-                { icon: whatsappIcon, name: 'WhatsApp' }
+
+                { icon: facebookIcon,  name: 'Facebook',  href: 'https://www.facebook.com/profile.php?id=61584722189527&mibextid=ZbWKwL' },
+                { icon: instagramIcon, name: 'Instagram', href: 'https://instagram.com/louable' },
+                { icon: twitterIcon,   name: 'Twitter',   href: 'https://twitter.com/louable' },
+                { icon: whatsappIcon,  name: 'WhatsApp',  href: 'https://wa.me/201234567890' }
+
               ].map((social, idx) => (
-                <a key={social.name} href="#" style={{
+                <a key={social.name} href={social.href} style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   width: isMobile ? '48px' : 'clamp(48px, 11vw, 52px)',
                   height: isMobile ? '48px' : 'clamp(48px, 11vw, 52px)',
