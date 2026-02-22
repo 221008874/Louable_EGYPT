@@ -1,8 +1,10 @@
+// src/pages/CartPage.jsx
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCart } from '../context/CartContext'
 import { useLanguage } from '../context/LanguageContext'
 import { useTheme } from '../context/ThemeContext'
+import { useLocation } from '../context/LocationContext' // ADDED: Import currency context
 import { db } from '../services/firebase'
 import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore'
 import L from 'leaflet'
@@ -37,7 +39,45 @@ export default function CartPage() {
   } = useCart()
   const { t } = useLanguage()
   const { theme } = useTheme()
+  const { currency } = useLocation() // ADDED: Get currency from context
   const navigate = useNavigate()
+
+  // ============ CURRENCY CONFIGURATION ============
+  // Determine currency symbol and collection name based on detected currency
+  const currencyConfig = useMemo(() => {
+    if (currency === 'USD') {
+      return {
+        symbol: '$',
+        code: 'USD',
+        collection: 'products_dollar',
+        orderCollection: 'orders_usd',
+        // USD shipping zones (different pricing for international)
+        shippingZones: {
+          local: { name: 'USA Standard', baseCost: 15, maxDistance: 500 }, // miles
+          upper: { name: 'USA Express', baseCost: 25, maxDistance: 1500 },
+          cairo: { name: 'Canada', baseCost: 30, maxDistance: 3000 },
+          delta: { name: 'Europe', baseCost: 35, maxDistance: 6000 },
+          remote: { name: 'Rest of World', baseCost: 50, maxDistance: 99999 }
+        },
+        freeShippingThreshold: 150 // USD
+      }
+    }
+    // Default to EGP for Egypt
+    return {
+      symbol: 'EGP',
+      code: 'EGP',
+      collection: 'products_egp',
+      orderCollection: 'orders_egp',
+      shippingZones: {
+        local: { name: 'Luxor & Aswan', baseCost: 40, maxDistance: 220 },
+        upper: { name: 'Upper Egypt', baseCost: 60, maxDistance: 350 },
+        cairo: { name: 'Cairo & Giza', baseCost: 80, maxDistance: 550 },
+        delta: { name: 'Delta & Alexandria', baseCost: 90, maxDistance: 700 },
+        remote: { name: 'Red Sea & Sinai', baseCost: 110, maxDistance: 9999 }
+      },
+      freeShippingThreshold: 800 // EGP
+    }
+  }, [currency])
 
   // ============ MAIN STATES ============
   const [isProcessing, setIsProcessing] = useState(false)
@@ -67,18 +107,19 @@ export default function CartPage() {
   const mapContainerRef = useRef(null)
   const markerRef = useRef(null)
 
-  // ============ SHIPPING CONFIGURATION (LUXOR BASED) ============
-  const WAREHOUSE_LOCATION = { lat: 25.6872, lng: 32.6396 }
+  // ============ SHIPPING CONFIGURATION ============
+  // Use currency-specific warehouse location and zones
+  const WAREHOUSE_LOCATION = useMemo(() => {
+    if (currency === 'USD') {
+      // Default to New York for USD orders (you can adjust this)
+      return { lat: 40.7128, lng: -74.0060 }
+    }
+    // Luxor for EGP orders
+    return { lat: 25.6872, lng: 32.6396 }
+  }, [currency])
 
-  const SHIPPING_ZONES = {
-    local: { name: 'Luxor & Aswan', baseCost: 40, maxDistance: 220 },
-    upper: { name: 'Upper Egypt', baseCost: 60, maxDistance: 350 },
-    cairo: { name: 'Cairo & Giza', baseCost: 80, maxDistance: 550 },
-    delta: { name: 'Delta & Alexandria', baseCost: 90, maxDistance: 700 },
-    remote: { name: 'Red Sea & Sinai', baseCost: 110, maxDistance: 9999 }
-  }
-
-  const FREE_SHIPPING_THRESHOLD = 800
+  const SHIPPING_ZONES = currencyConfig.shippingZones
+  const FREE_SHIPPING_THRESHOLD = currencyConfig.freeShippingThreshold
 
   // ============ SHIPPING CALCULATION FUNCTIONS ============
   const getDistanceFromLatLonInKm = (lat1, lng1, lat2, lng2) => {
@@ -121,16 +162,15 @@ export default function CartPage() {
       distance: Math.round(distance),
       isFree
     }
-  }, [deliveryInfo, totalPrice])
+  }, [deliveryInfo, totalPrice, WAREHOUSE_LOCATION, SHIPPING_ZONES, FREE_SHIPPING_THRESHOLD])
 
   const shippingDetails = calculateShipping()
 
   // ============ DELIVERY FORM STATES ============
-  // FIXED: Added email to initial state
   const [formData, setFormData] = useState({
     name: deliveryInfo?.name || '',
     phone: deliveryInfo?.phone || '',
-    email: deliveryInfo?.email || '', // CRITICAL: Added email field
+    email: deliveryInfo?.email || '',
     address: deliveryInfo?.address || '',
     city: deliveryInfo?.city || '',
     latitude: deliveryInfo?.latitude || null,
@@ -172,7 +212,11 @@ export default function CartPage() {
     setMapLoading(true)
     if (!navigator.geolocation) {
       setMapError(true)
-      setMapCenter({ lat: 30.0444, lng: 31.2357 })
+      // Default center based on currency
+      setMapCenter(currency === 'USD' 
+        ? { lat: 40.7128, lng: -74.0060 } // New York
+        : { lat: 30.0444, lng: 31.2357 }  // Cairo
+      )
       setMapLoading(false)
       return
     }
@@ -192,14 +236,19 @@ export default function CartPage() {
       (error) => {
         console.warn('Geolocation error:', error)
         setMapError(true)
-        setMapCenter({ lat: 30.0444, lng: 31.2357 })
+        // Default center based on currency
+        setMapCenter(currency === 'USD' 
+          ? { lat: 40.7128, lng: -74.0060 }
+          : { lat: 30.0444, lng: 31.2357 }
+        )
         setMapLoading(false)
       },
       { enableHighAccuracy: true, timeout: 10000 }
     )
-  }, [])
+  }, [currency])
 
   // ============ PRODUCT DETAILS FETCH ============
+  // UPDATED: Use currency-specific collection
   useEffect(() => {
     const fetchProductDetails = async () => {
       const details = {}
@@ -207,7 +256,8 @@ export default function CartPage() {
 
       await Promise.all(items.map(async (item) => {
         try {
-          const docRef = doc(db, 'products_egp', item.id)
+          // Use the appropriate collection based on currency
+          const docRef = doc(db, currencyConfig.collection, item.id)
           const docSnap = await getDoc(docRef)
 
           if (docSnap.exists()) {
@@ -240,11 +290,10 @@ export default function CartPage() {
     if (items.length > 0) {
       fetchProductDetails()
     }
-  }, [items, t])
+  }, [items, t, currencyConfig.collection])
 
   // ============ DERIVED STATE ============
   const hasDeliveryInfo = useMemo(() => {
-    // FIXED: Added email check
     return deliveryInfo && deliveryInfo.name && deliveryInfo.phone && deliveryInfo.email && deliveryInfo.address
   }, [deliveryInfo])
 
@@ -252,11 +301,10 @@ export default function CartPage() {
     return Object.keys(stockErrors).length === 0 && hasDeliveryInfo && !isProcessing
   }, [stockErrors, hasDeliveryInfo, isProcessing])
 
-  // ============ CRITICAL FIX: MISSING handleInputChange FUNCTION ============
+  // ============ FORM HANDLERS ============
   const handleInputChange = (e) => {
     const { name, value } = e.target
     setFormData(prev => ({ ...prev, [name]: value }))
-    // Clear error when user types
     if (formErrors[name]) {
       setFormErrors(prev => {
         const next = { ...prev }
@@ -270,13 +318,12 @@ export default function CartPage() {
   const validateForm = useCallback(() => {
     const errors = {}
     const phoneRegex = /^\+?[\d\s\-\(\)]{10,}$/
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/ // ADDED
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
     if (!formData.name.trim()) errors.name = t('nameRequired')
     if (!formData.phone.trim() || !phoneRegex.test(formData.phone)) {
       errors.phone = t('validPhoneRequired')
     }
-    // ADDED: Email validation
     if (!formData.email?.trim() || !emailRegex.test(formData.email)) {
       errors.email = 'Valid email required'
     }
@@ -306,8 +353,10 @@ export default function CartPage() {
     
     setIsSearching(true)
     try {
+      // For USD orders, search worldwide; for EGP, restrict to Egypt
+      const countryCodes = currency === 'USD' ? '' : '&countrycodes=eg'
       const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&countrycodes=eg&limit=5`
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}${countryCodes}&limit=5`
       )
       const data = await response.json()
       setSearchResults(data.map(item => ({
@@ -321,7 +370,7 @@ export default function CartPage() {
     } finally {
       setIsSearching(false)
     }
-  }, [searchQuery])
+  }, [searchQuery, currency])
 
   const handleSelectResult = (result) => {
     const newLocation = { lat: result.lat, lng: result.lon }
@@ -330,7 +379,6 @@ export default function CartPage() {
     setSearchQuery(result.display_name)
     setSearchResults([])
     
-    // Update map view if map exists
     if (mapRef.current) {
       mapRef.current.setView([newLocation.lat, newLocation.lng], 16)
       if (markerRef.current) {
@@ -342,7 +390,9 @@ export default function CartPage() {
   // ============ LEAFLET MAP INITIALIZATION ============
   useEffect(() => {
     if (showMapEditor && mapContainerRef.current && !mapRef.current) {
-      const initialCenter = mapEditorCenter || { lat: 30.0444, lng: 31.2357 }
+      const initialCenter = mapEditorCenter || (currency === 'USD' 
+        ? { lat: 40.7128, lng: -74.0060 }
+        : { lat: 30.0444, lng: 31.2357 })
       
       mapRef.current = L.map(mapContainerRef.current).setView(
         [initialCenter.lat, initialCenter.lng],
@@ -354,19 +404,16 @@ export default function CartPage() {
         maxZoom: 19
       }).addTo(mapRef.current)
 
-      // Create draggable marker
       markerRef.current = L.marker([initialCenter.lat, initialCenter.lng], {
         draggable: true,
         title: 'Drag to set your location'
       }).addTo(mapRef.current)
 
-      // Update temp location when marker is dragged
       markerRef.current.on('dragend', (e) => {
         const { lat, lng } = e.target.getLatLng()
         setTempLocation({ lat, lng })
       })
 
-      // Click on map to move marker
       mapRef.current.on('click', (e) => {
         const { lat, lng } = e.latlng
         markerRef.current.setLatLng([lat, lng])
@@ -383,9 +430,8 @@ export default function CartPage() {
         markerRef.current = null
       }
     }
-  }, [showMapEditor, mapEditorCenter])
+  }, [showMapEditor, mapEditorCenter, currency])
 
-  // Update marker position when mapEditorCenter changes
   useEffect(() => {
     if (mapRef.current && markerRef.current && mapEditorCenter) {
       markerRef.current.setLatLng([mapEditorCenter.lat, mapEditorCenter.lng])
@@ -399,7 +445,9 @@ export default function CartPage() {
     
     const initialCenter = deliveryInfo?.latitude 
       ? { lat: deliveryInfo.latitude, lng: deliveryInfo.longitude }
-      : mapCenter || { lat: 30.0444, lng: 31.2357 }
+      : mapCenter || (currency === 'USD' 
+        ? { lat: 40.7128, lng: -74.0060 }
+        : { lat: 30.0444, lng: 31.2357 })
       
     setMapEditorCenter(initialCenter)
     setTempLocation(initialCenter)
@@ -408,13 +456,12 @@ export default function CartPage() {
     setShowMapEditor(true)
     
     document.body.style.overflow = 'hidden'
-  }, [deliveryInfo, mapCenter])
+  }, [deliveryInfo, mapCenter, currency])
 
   const handleCloseMapEditor = useCallback(() => {
     setShowMapEditor(false)
     document.body.style.overflow = 'unset'
     
-    // Clean up map instance
     if (mapRef.current) {
       mapRef.current.remove()
       mapRef.current = null
@@ -458,6 +505,7 @@ export default function CartPage() {
   const finalPrice = subtotal + shippingCost
 
   // ============ CHECKOUT WITH KASHIER ============
+  // UPDATED: Currency-aware checkout
   const handleCheckout = useCallback(async () => {
     if (!canCheckout || Object.keys(stockErrors).length > 0) {
       alert(t('resolveStockIssues') || 'Please resolve stock issues before checkout')
@@ -468,8 +516,8 @@ export default function CartPage() {
     const orderId = `order_${Date.now()}`
     
     try {
-      // Create order in Firestore first
-      const orderRef = await addDoc(collection(db, 'orders_egp'), {
+      // UPDATED: Use currency-specific order collection
+      const orderRef = await addDoc(collection(db, currencyConfig.orderCollection), {
         orderId,
         userId: `guest_${Date.now()}`,
         items: items.map(item => ({
@@ -480,13 +528,13 @@ export default function CartPage() {
         })),
         totalPrice: finalPrice,
         totalItems: items.reduce((sum, item) => sum + (item.quantity || 1), 0),
-        currency: 'EGP',
+        currency: currencyConfig.code, // UPDATED: Use detected currency
         paymentMethod: paymentMethod === 'cod' ? 'Cash on Delivery' : 'Card (Kashier)',
         paymentStatus: paymentMethod === 'cod' ? 'pending' : 'awaiting_payment',
         status: 'pending',
         customerName: deliveryInfo.name,
         customerPhone: deliveryInfo.phone,
-        customerEmail: deliveryInfo.email, // CRITICAL: Must have email
+        customerEmail: deliveryInfo.email,
         customerAddress: deliveryInfo.address,
         customerLocation: {
           latitude: deliveryInfo.latitude,
@@ -501,28 +549,27 @@ export default function CartPage() {
       if (paymentMethod === 'card') {
         const { kashierApi } = await import('../api/kashier')
         
-        // CRITICAL: Ensure email exists
         if (!deliveryInfo.email) {
           throw new Error('Email is required for card payments')
         }
 
+        // UPDATED: Use currency in payment
         const paymentResult = await kashierApi.createPayment({
           amount: finalPrice,
-          currency: 'EGP',
+          currency: currencyConfig.code, // UPDATED: Use detected currency
           customerEmail: deliveryInfo.email,
           customerPhone: deliveryInfo.phone,
           orderId: orderId,
-          description: `Order #${orderId} - Louable Chocolates`
+          description: `Order #${orderId} - Louable Chocolates (${currencyConfig.code})`
         })
 
         if (paymentResult.success && paymentResult.checkoutUrl) {
-          // Store order info for after payment return
           sessionStorage.setItem('pendingOrderId', orderId)
           sessionStorage.setItem('pendingFirestoreId', orderRef.id)
+          sessionStorage.setItem('pendingCurrency', currencyConfig.code) // Store currency for return
           
-          // Redirect to Kashier hosted checkout page
           window.location.href = paymentResult.checkoutUrl
-          return // Stop here - don't clear cart yet
+          return
         } else {
           throw new Error('Failed to create payment session')
         }
@@ -539,7 +586,8 @@ export default function CartPage() {
           items,
           deliveryInfo,
           shipping: shippingDetails,
-          paymentMethod: 'cod'
+          paymentMethod: 'cod',
+          currency: currencyConfig.code // UPDATED: Pass currency to success page
         }
       })
 
@@ -560,7 +608,8 @@ export default function CartPage() {
     t,
     clearCart, 
     clearDeliveryInfo, 
-    navigate
+    navigate,
+    currencyConfig // ADDED dependency
   ])
 
   const handleQuantityUpdate = useCallback(async (item, newQuantity) => {
@@ -638,6 +687,15 @@ export default function CartPage() {
   }), [])
 
   const c = colors[theme] || colors.light
+
+  // ============ CURRENCY DISPLAY HELPER ============
+  // UPDATED: Format price with correct currency symbol
+  const formatPrice = (price) => {
+    if (currencyConfig.code === 'USD') {
+      return `$${price.toFixed(2)}`
+    }
+    return `${price.toFixed(2)} EGP`
+  }
 
   // ============ MAP EDITOR MODAL COMPONENT ============
   const MapEditorModal = () => {
@@ -733,7 +791,9 @@ export default function CartPage() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              placeholder="Search for area, street, or landmark in Egypt..."
+              placeholder={currency === 'USD' 
+                ? "Search for area, street, or landmark..." 
+                : "Search for area, street, or landmark in Egypt..."}
               style={{
                 width: '100%',
                 padding: '12px 16px',
@@ -745,7 +805,6 @@ export default function CartPage() {
                 fontFamily: 'inherit'
               }}
             />
-            {/* Search Results Dropdown */}
             {searchResults.length > 0 && (
               <div style={{
                 position: 'absolute',
@@ -846,7 +905,6 @@ export default function CartPage() {
             </div>
           )}
           
-          {/* Leaflet Map Container */}
           <div 
             ref={mapContainerRef}
             style={{
@@ -856,7 +914,6 @@ export default function CartPage() {
             }}
           />
 
-          {/* Floating Instructions */}
           <div style={{
             position: 'absolute',
             top: '1rem',
@@ -1137,6 +1194,22 @@ export default function CartPage() {
         }}>
           Browse our collection and add some delicious items!
         </p>
+        {/* UPDATED: Show currency badge in empty cart */}
+        <div style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '8px',
+          padding: '10px 20px',
+          background: c.card,
+          borderRadius: '20px',
+          border: `2px solid ${c.border}`,
+          marginBottom: '1.5rem',
+          fontSize: '0.9rem',
+          color: c.textMuted
+        }}>
+          <span>{currency === 'USD' ? '💵' : '🇪🇬'}</span>
+          <span>Shopping in {currencyConfig.code}</span>
+        </div>
         <button
           onClick={() => navigate('/home')}
           style={{
@@ -1211,32 +1284,50 @@ export default function CartPage() {
             ← {!isMobile && 'Back'}
           </button>
 
-          <h1 style={{
-            margin: 0,
-            color: c.textDark,
-            fontSize: isMobile ? '1.8rem' : '2.5rem',
-            fontWeight: '900',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '16px',
-            flex: isMobile ? '1' : 'auto'
-          }}>
-            🛒 Cart
-            <span style={{
-              fontSize: isMobile ? '1rem' : '1.3rem',
-              fontWeight: '800',
-              background: `linear-gradient(135deg, ${c.secondary}20, ${c.secondary}05)`,
-              color: c.secondary,
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            {/* UPDATED: Currency Badge in Header */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
               padding: '8px 16px',
-              borderRadius: '24px',
+              background: c.card,
+              borderRadius: '20px',
               border: `2px solid ${c.secondary}`,
-              minWidth: '50px',
-              textAlign: 'center',
-              animation: 'badgePulse 2s ease-in-out infinite'
+              fontSize: '0.85rem',
+              fontWeight: '700',
+              color: c.secondary
             }}>
-              {totalItems}
-            </span>
-          </h1>
+              <span>{currency === 'USD' ? '💵' : '🇪🇬'}</span>
+              <span>{currencyConfig.code}</span>
+            </div>
+
+            <h1 style={{
+              margin: 0,
+              color: c.textDark,
+              fontSize: isMobile ? '1.8rem' : '2.5rem',
+              fontWeight: '900',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '16px'
+            }}>
+              🛒 Cart
+              <span style={{
+                fontSize: isMobile ? '1rem' : '1.3rem',
+                fontWeight: '800',
+                background: `linear-gradient(135deg, ${c.secondary}20, ${c.secondary}05)`,
+                color: c.secondary,
+                padding: '8px 16px',
+                borderRadius: '24px',
+                border: `2px solid ${c.secondary}`,
+                minWidth: '50px',
+                textAlign: 'center',
+                animation: 'badgePulse 2s ease-in-out infinite'
+              }}>
+                {totalItems}
+              </span>
+            </h1>
+          </div>
         </header>
 
         <CartErrorBanner />
@@ -1390,23 +1481,23 @@ export default function CartPage() {
                         </button>
                       </div>
 
-                      {/* PRICE */}
+                      {/* UPDATED: Price with dynamic currency formatting */}
                       <div style={{
                         color: c.secondary,
                         fontSize: '1.4rem',
                         fontWeight: '900',
                         marginBottom: '0.5rem'
                       }}>
-                        {(item.price * item.quantity).toFixed(2)} EGP
+                        {formatPrice(item.price * item.quantity)}
                       </div>
 
-                      {/* UNIT PRICE */}
+                      {/* UPDATED: Unit price with dynamic currency */}
                       <div style={{
                         color: c.textMuted,
                         fontSize: '0.85rem',
                         marginBottom: '1rem'
                       }}>
-                        @ {item.price.toFixed(2)} EGP each
+                        @ {formatPrice(item.price)} each
                       </div>
 
                       {/* STOCK STATUS */}
@@ -1620,6 +1711,17 @@ export default function CartPage() {
                   gap: '8px'
                 }}>
                   📍 Delivery Info
+                  {/* UPDATED: Show currency context */}
+                  <span style={{
+                    marginLeft: 'auto',
+                    fontSize: '0.7rem',
+                    padding: '4px 8px',
+                    background: c.overlay,
+                    borderRadius: '12px',
+                    color: c.textMuted
+                  }}>
+                    {currencyConfig.code}
+                  </span>
                 </h3>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem' }}>
@@ -1678,7 +1780,7 @@ export default function CartPage() {
                       type="tel"
                       value={formData.phone}
                       onChange={handleInputChange}
-                      placeholder="+20 123 456 7890"
+                      placeholder={currency === 'USD' ? '+1 (555) 123-4567' : '+20 123 456 7890'}
                       style={{
                         width: '100%',
                         padding: '12px 16px',
@@ -1698,7 +1800,7 @@ export default function CartPage() {
                     {formErrors.phone && <div style={{ color: c.danger, fontSize: '0.75rem', marginTop: '4px' }}>✕ {formErrors.phone}</div>}
                   </div>
 
-                  {/* EMAIL - CRITICAL FIX */}
+                  {/* EMAIL */}
                   <div>
                     <label style={{
                       display: 'block',
@@ -1792,7 +1894,7 @@ export default function CartPage() {
                       name="city"
                       value={formData.city}
                       onChange={handleInputChange}
-                      placeholder="Enter city (e.g., Cairo, Alexandria)"
+                      placeholder={currency === 'USD' ? "Enter city (e.g., New York, London)" : "Enter city (e.g., Cairo, Alexandria)"}
                       style={{
                         width: '100%',
                         padding: '12px 16px',
@@ -1997,7 +2099,7 @@ export default function CartPage() {
                 <div style={{ fontSize: '0.9rem', color: c.textDark, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   <div><strong>{deliveryInfo.name}</strong></div>
                   <div>{deliveryInfo.phone}</div>
-                  <div>{deliveryInfo.email}</div> {/* ADDED: Show email */}
+                  <div>{deliveryInfo.email}</div>
                   <div style={{ wordBreak: 'break-word' }}>{deliveryInfo.address}</div>
                 </div>
               </div>
@@ -2123,34 +2225,36 @@ export default function CartPage() {
               </h4>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {/* Cash on Delivery */}
-                <label style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  padding: '14px',
-                  background: paymentMethod === 'cod' ? `${c.success}15` : c.overlay,
-                  border: `2px solid ${paymentMethod === 'cod' ? c.success : c.border}`,
-                  borderRadius: '12px',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease'
-                }}>
-                  <input
-                    type="radio"
-                    name="payment"
-                    value="cod"
-                    checked={paymentMethod === 'cod'}
-                    onChange={(e) => setPaymentMethod(e.target.value)}
-                    style={{ width: '20px', height: '20px', accentColor: c.success }}
-                  />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: '800', color: c.textDark }}>Cash on Delivery</div>
-                    <div style={{ fontSize: '0.8rem', color: c.textMuted }}>Pay when you receive</div>
-                  </div>
-                  <span style={{ fontSize: '1.5rem' }}>💵</span>
-                </label>
+                {/* Cash on Delivery - Only show for EGP (Egypt) */}
+                {currency === 'EGP' && (
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    padding: '14px',
+                    background: paymentMethod === 'cod' ? `${c.success}15` : c.overlay,
+                    border: `2px solid ${paymentMethod === 'cod' ? c.success : c.border}`,
+                    borderRadius: '12px',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s ease'
+                  }}>
+                    <input
+                      type="radio"
+                      name="payment"
+                      value="cod"
+                      checked={paymentMethod === 'cod'}
+                      onChange={(e) => setPaymentMethod(e.target.value)}
+                      style={{ width: '20px', height: '20px', accentColor: c.success }}
+                    />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: '800', color: c.textDark }}>Cash on Delivery</div>
+                      <div style={{ fontSize: '0.8rem', color: c.textMuted }}>Pay when you receive</div>
+                    </div>
+                    <span style={{ fontSize: '1.5rem' }}>💵</span>
+                  </label>
+                )}
 
-                {/* Credit/Debit Card */}
+                {/* Credit/Debit Card - Available for both */}
                 <label style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -2172,7 +2276,9 @@ export default function CartPage() {
                   />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: '800', color: c.textDark }}>Credit/Debit Card</div>
-                    <div style={{ fontSize: '0.8rem', color: c.textMuted }}>Secure payment via Kashier</div>
+                    <div style={{ fontSize: '0.8rem', color: c.textMuted }}>
+                      Secure payment via Kashier ({currencyConfig.code})
+                    </div>
                   </div>
                   <span style={{ fontSize: '1.5rem' }}>💳</span>
                 </label>
@@ -2201,12 +2307,13 @@ export default function CartPage() {
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: c.textMuted, fontSize: '0.9rem', fontWeight: '600' }}>
                   <span>Subtotal</span>
-                  <span>{totalPrice.toFixed(2)} EGP</span>
+                  {/* UPDATED: Use formatPrice helper */}
+                  <span>{formatPrice(totalPrice)}</span>
                 </div>
                 {discountAmount > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', color: c.success, fontSize: '0.9rem', fontWeight: '800', animation: 'slideDown 0.4s ease-out' }}>
                     <span>💚 Discount</span>
-                    <span>-{discountAmount.toFixed(2)} EGP</span>
+                    <span>-{formatPrice(discountAmount)}</span>
                   </div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: c.textMuted, fontSize: '0.9rem', fontWeight: '600' }}>
@@ -2218,7 +2325,7 @@ export default function CartPage() {
                   }}>
                     {shippingDetails.isFree 
                       ? `Free 🎉` 
-                      : `${shippingCost.toFixed(2)} EGP`
+                      : formatPrice(shippingCost)
                     }
                   </span>
                 </div>
@@ -2259,7 +2366,8 @@ export default function CartPage() {
                   marginBottom: '1.25rem',
                   animation: 'fadeInUp 0.6s ease-out'
                 }}>
-                  Add {(FREE_SHIPPING_THRESHOLD - totalPrice).toFixed(0)} EGP more for free shipping!
+                  {/* UPDATED: Dynamic free shipping threshold */}
+                  Add {formatPrice(FREE_SHIPPING_THRESHOLD - totalPrice)} more for free shipping!
                 </p>
               )}
 
@@ -2274,7 +2382,8 @@ export default function CartPage() {
                 letterSpacing: '0.5px'
               }}>
                 <span>Total:</span>
-                <span style={{ color: c.secondary }}>{finalPrice.toFixed(2)} EGP</span>
+                {/* UPDATED: Use formatPrice helper */}
+                <span style={{ color: c.secondary }}>{formatPrice(finalPrice)}</span>
               </div>
 
               <button
@@ -2314,7 +2423,7 @@ export default function CartPage() {
                 <span style={{ fontSize: '1.2rem' }}>
                   {isProcessing ? '⏳' : !hasDeliveryInfo ? '📝' : Object.keys(stockErrors).length > 0 ? '❌' : '💳'}
                 </span>
-                {isProcessing ? 'Processing' : !hasDeliveryInfo ? 'Enter Delivery Info' : Object.keys(stockErrors).length > 0 ? 'Resolve Stock Issues' : 'Checkout'}
+                {isProcessing ? 'Processing' : !hasDeliveryInfo ? 'Enter Delivery Info' : Object.keys(stockErrors).length > 0 ? 'Resolve Stock Issues' : `Checkout (${currencyConfig.code})`}
               </button>
 
               {!canCheckout && (
@@ -2337,7 +2446,7 @@ export default function CartPage() {
         </div>
       </div>
 
-      {/* MAP EDITOR MODAL - MUST BE AT THE END */}
+      {/* MAP EDITOR MODAL */}
       <MapEditorModal />
 
       <style>{`
