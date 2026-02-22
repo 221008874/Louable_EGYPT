@@ -2,6 +2,7 @@
 import { useLanguage } from '../context/LanguageContext'
 import { useTheme } from '../context/ThemeContext'
 import { useCart } from '../context/CartContext'
+import { useLocation } from '../context/LocationContext'
 import { Link } from 'react-router-dom'
 import { useState } from 'react'
 
@@ -19,34 +20,14 @@ const safeT = (t, key, fallback = '') => {
 
 export default function ProductCard({ product }) {
   const [isHovering, setIsHovering] = useState(false)
-  
-  // Defensive hooks - wrap in try-catch to prevent crashes
-  let t = (key) => key
-  let lang = 'en'
-  let theme = 'light'
-  let addToCart = () => {}
-  
-  try {
-    const languageContext = useLanguage()
-    t = languageContext.t || ((key) => key)
-    lang = languageContext.lang || 'en'
-  } catch (e) {
-    console.warn('LanguageContext not available')
-  }
-  
-  try {
-    const themeContext = useTheme()
-    theme = themeContext.theme || 'light'
-  } catch (e) {
-    console.warn('ThemeContext not available')
-  }
-  
-  try {
-    const cartContext = useCart()
-    addToCart = cartContext.addToCart || (() => {})
-  } catch (e) {
-    console.warn('CartContext not available')
-  }
+
+  // FIX: Hooks must be called unconditionally at the top level.
+  // Wrapping hooks in try/catch violates React's Rules of Hooks and
+  // causes "Rendered more/fewer hooks than during the previous render" crashes.
+  const { t, lang } = useLanguage()
+  const { theme } = useTheme()
+  const { addToCart } = useCart()
+  const { currency } = useLocation()  // FIX: Added missing currency context
 
   const colors = {
     light: {
@@ -79,6 +60,13 @@ export default function ProductCard({ product }) {
 
   const c = colors[theme] || colors.light
 
+  // FIX: Dynamic currency formatting instead of hardcoded 'EGP'
+  const formatPrice = (price) => {
+    if (price == null) return ''
+    if (currency === 'USD') return `$${price.toFixed(2)}`
+    return `${price.toFixed(2)} EGP`
+  }
+
   // Stock calculations
   const stock = product?.stock || 0
   const isOutOfStock = stock <= 0
@@ -89,11 +77,11 @@ export default function ProductCard({ product }) {
   const handleAddToCart = (e) => {
     e.preventDefault()
     e.stopPropagation()
-    
+
     if (isOutOfStock) return
-    
+
     addToCart(product)
-    
+
     // Show success message
     const successMsg = document.createElement('div')
     successMsg.innerHTML = `
@@ -129,7 +117,6 @@ export default function ProductCard({ product }) {
   const outOfStockText = safeT(t, 'outOfStock', 'Out of Stock')
   const onlyLeftText = safeT(t, 'onlyLeft', 'Only {count} left!').replace('{count}', stock)
   const inStockText = safeT(t, 'inStock', 'In Stock: {count}').replace('{count}', stock)
-  const addToCartText = safeT(t, 'addToCart', 'Add to Cart')
   const piecesText = safeT(t, 'pieces', 'pieces')
   const addText = safeT(t, 'add', 'Add')
 
@@ -262,7 +249,7 @@ export default function ProductCard({ product }) {
               flexDirection: 'column',
               justifyContent: 'center',
               alignItems: 'center',
-              background: theme === 'light' 
+              background: theme === 'light'
                 ? 'linear-gradient(135deg, #E8DDD4 0%, #D4C4B8 100%)'
                 : 'linear-gradient(135deg, #3E2723 0%, #5D4037 100%)',
               fontSize: '4rem'
@@ -270,7 +257,7 @@ export default function ProductCard({ product }) {
               <span style={{ animation: 'bounce 2s ease-in-out infinite' }}>🍫</span>
             </div>
           )}
-          
+
           {/* Out of Stock Overlay */}
           {isOutOfStock && (
             <div style={{
@@ -331,12 +318,12 @@ export default function ProductCard({ product }) {
                   gap: '6px'
                 }}
                 onMouseEnter={(e) => {
-                  e.target.style.transform = 'scale(1.05)'
-                  e.target.style.boxShadow = '0 6px 16px rgba(212, 160, 23, 0.5)'
+                  e.currentTarget.style.transform = 'scale(1.05)'
+                  e.currentTarget.style.boxShadow = '0 6px 16px rgba(212, 160, 23, 0.5)'
                 }}
                 onMouseLeave={(e) => {
-                  e.target.style.transform = 'scale(1)'
-                  e.target.style.boxShadow = '0 4px 12px rgba(212, 160, 23, 0.3)'
+                  e.currentTarget.style.transform = 'scale(1)'
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(212, 160, 23, 0.3)'
                 }}
               >
                 <span>🛒</span>
@@ -367,7 +354,7 @@ export default function ProductCard({ product }) {
             {product.name}
           </h3>
 
-          {/* Rating Section - New Feature */}
+          {/* Rating Section */}
           {rating > 0 && (
             <div style={{
               display: 'flex',
@@ -377,12 +364,14 @@ export default function ProductCard({ product }) {
             }}>
               <span style={{ color: c.secondary, fontWeight: '700' }}>⭐ {rating.toFixed(1)}</span>
               {reviews > 0 && (
-                <span style={{ color: c.textLight }}>({reviews} {reviews === 1 ? safeT(t, 'review', 'review') : safeT(t, 'reviews', 'reviews')})</span>
+                <span style={{ color: c.textLight }}>
+                  ({reviews} {reviews === 1 ? safeT(t, 'review', 'review') : safeT(t, 'reviews', 'reviews')})
+                </span>
               )}
             </div>
           )}
 
-          {/* Description - New Feature */}
+          {/* Description */}
           {product.description && (
             <p style={{
               fontSize: '0.8rem',
@@ -398,7 +387,7 @@ export default function ProductCard({ product }) {
             </p>
           )}
 
-          {/* Flavors/Variants - Enhanced */}
+          {/* Flavors/Variants */}
           {product.flavors && product.flavors.length > 0 && (
             <div style={{
               display: 'flex',
@@ -438,12 +427,13 @@ export default function ProductCard({ product }) {
               justifyContent: 'space-between',
               marginBottom: '8px'
             }}>
+              {/* FIX: Dynamic currency display — reads from LocationContext */}
               <span style={{
                 color: c.secondary,
                 fontSize: '1.4rem',
                 fontWeight: '800'
               }}>
-                EGP {product.price?.toFixed(2)}
+                {formatPrice(product.price)}
               </span>
               {product.originalPrice && product.originalPrice > product.price && (
                 <span style={{
@@ -451,7 +441,7 @@ export default function ProductCard({ product }) {
                   fontSize: '0.8rem',
                   textDecoration: 'line-through'
                 }}>
-                  π {product.originalPrice.toFixed(2)}
+                  {formatPrice(product.originalPrice)}
                 </span>
               )}
             </div>
@@ -482,19 +472,16 @@ export default function ProductCard({ product }) {
             transform: translateX(-50%) translateY(0);
           }
         }
-
         @keyframes slideOut {
           to {
             opacity: 0;
             transform: translateX(-50%) translateY(-30px);
           }
         }
-
         @keyframes pulse {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.8; }
         }
-
         @keyframes bounce {
           0%, 100% { transform: translateY(0); }
           50% { transform: translateY(-10px); }

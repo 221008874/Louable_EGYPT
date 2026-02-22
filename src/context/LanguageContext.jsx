@@ -7,7 +7,7 @@ const translations = {
     // App & Brand
     appName: 'شوب إيزي',
     Louable: 'لوابل',
-    
+
     // Navigation & General
     home: 'الرئيسية',
     products: 'المنتجات',
@@ -20,7 +20,7 @@ const translations = {
     viewDetails: 'شوف التفاصيل',
     goToCart: 'روح للعربية',
     continueShopping: 'كمل تسوق',
-    
+
     // Hero & Home
     featuredProducts: 'المنتجات المميزة',
     discoverPremium: 'اكتشف تشكيلتنا الفاخرة من الشوكولاتة ✨',
@@ -28,7 +28,7 @@ const translations = {
     noProductsAvailable: 'مفيش منتجات لسه',
     checkBackSoon: 'ارجع تاني قريب إن شاء الله!',
     loadingPremiumChocolates: 'جاري تحميل الشوكولاتة الفاخرة...',
-    
+
     // Product Details
     piecesPerBox: 'عدد القطع في العلبة',
     pieces: 'قطعة',
@@ -39,10 +39,14 @@ const translations = {
     price: 'السعر',
     quantity: 'الكمية',
     addToCart: 'حط في العربية',
+    // FIX: Added missing translation key used in ProductCard & ProductDetail success notification
+    addedToCart: 'تم الإضافة للعربية',
     premiumQuality: 'جودة ممتازة',
     loadingProductDetails: 'جاري تحميل تفاصيل المنتج...',
     productImage: 'صورة المنتج',
-    
+    review: 'تقييم',
+    reviews: 'تقييمات',
+
     // Stock Management
     outOfStock: 'نفذت الكمية',
     onlyLeft: 'باقي {count} بس!',
@@ -54,7 +58,7 @@ const translations = {
     maxReached: 'وصلت للحد الأقصى',
     maxAvailable: 'الحد الأقصى {count}',
     increaseQuantity: 'زود الكمية',
-    
+
     // Cart
     cart: 'العربية',
     total: 'الإجمالي',
@@ -84,12 +88,12 @@ const translations = {
     orderSummary: 'ملخص الطلب',
     adjustQuantitiesBeforeCheckout: 'عدل الكميات قبل أكمل الطلب',
     productNotAvailable: 'المنتج غير متوفر',
-    
+
     // Theme
     theme: 'الوضع',
     lightMode: 'وضع النهار',
     darkMode: 'وضع الليل',
-    
+
     // About Us
     aboutUsTitle: 'عنّا',
     ourMission: 'مهمتنا',
@@ -101,14 +105,14 @@ const translations = {
     joinOurSweetJourney: 'انضم لرحلتنا الحلوة',
     experienceFinest: 'جرب أحلى الشوكولاتة المصنوعة بحب واهتمام. كل قطعة فيها قصة جودة وشغف.',
     exploreOurProducts: 'اكتشف منتجاتنا',
-    
+
     // Footer
     footerTagline: 'بنصنع الشوكولاتة الفاخرة بشغف وتميز. كل قطعة فيها قصة جودة وطعم رائع.',
     quickLinks: 'لينكات سريعة',
     followUs: 'تابعنا',
     allRightsReserved: 'جميع الحقوق محفوظة',
     handcraftedWith: 'مصنوع بحب',
-    
+
     // Legal
     privacyPolicy: 'سياسة الخصوصية',
     termsOfService: 'شروط الاستخدام',
@@ -126,7 +130,7 @@ const translations = {
     yourRights: 'حقوقك',
     rightsText: 'لك الحق تطلب حذف بياناتك أو تصحيحها في أي وقت عن طريق التواصل معانا.',
     contactPrivacyText: 'لأي استفسارات عن سياسة الخصوصية، ابعتنا على: louablefactory@gmail.com',
-    
+
     // Order Success
     orderConfirmed: 'تم تأكيد الطلب!',
     thankYouPurchase: 'شكراً لشرائك. طلبك تم بنجاح.',
@@ -134,60 +138,43 @@ const translations = {
     orderDetails: 'تفاصيل الطلب',
     transaction: 'العملية:',
     totalPaid: 'المبلغ المدفوع:',
-    
+
     // Terms of Service
     acceptanceOfTerms: 'قبول الشروط',
     paymentProcessing: 'معالجة الدفع',
     productInfo: 'معلومات المنتج',
     userResponsibilities: 'مسؤوليات المستخدم',
     limitationOfLiability: 'حدود المسؤولية',
-    
+
     // Pi Status
     piConnected: '✅ Pi متصل',
     piFailed: '❌ Pi فشل',
     connecting: '⏳ جاري الاتصال...',
-    deliveryInformation: "معلومات التوصيل",
-  fullName: "الاسم الكامل",
-  age: "العمر",
-  phoneNumber: "رقم الهاتف",
-  detailedAddress: "العنوان التفصيلي",
-  selectLocationOnMap: "حدد الموقع على الخريطة",
-  geolocationNotSupported: "الموقع الجغرافي غير مدعوم في متصفحك",
-  loadingMap: "جارٍ تحميل الخريطة",
-  clickMapToSelectLocation: "انقر على الخريطة لتحديد موقعك الدقيق",
-  saveDeliveryInfo: "حفظ معلومات التوصيل",
-  completeDeliveryInfo: "أكمل معلومات التوصيل",
-  pleaseCompleteDeliveryInfo: "يرجى إكمال معلومات التوصيل قبل المتابعة",
-  nameRequired: "الاسم الكامل مطلوب",
-  validAgeRequired: "يرجى إدخال عمر صالح (13-120)",
-  validPhoneRequired: "يرجى إدخال رقم هاتف صالح",
-  addressRequired: "العنوان التفصيلي مطلوب",
-  locationRequired: "يرجى تحديد موقعك على الخريطة",
+
+    // Delivery
+    deliveryInformation: 'معلومات التوصيل',
+    fullName: 'الاسم الكامل',
+    age: 'العمر',
+    phoneNumber: 'رقم الهاتف',
+    detailedAddress: 'العنوان التفصيلي',
+    selectLocationOnMap: 'حدد الموقع على الخريطة',
+    geolocationNotSupported: 'الموقع الجغرافي غير مدعوم في متصفحك',
+    loadingMap: 'جارٍ تحميل الخريطة',
+    clickMapToSelectLocation: 'انقر على الخريطة لتحديد موقعك الدقيق',
+    saveDeliveryInfo: 'حفظ معلومات التوصيل',
+    completeDeliveryInfo: 'أكمل معلومات التوصيل',
+    pleaseCompleteDeliveryInfo: 'يرجى إكمال معلومات التوصيل قبل المتابعة',
+    nameRequired: 'الاسم الكامل مطلوب',
+    validAgeRequired: 'يرجى إدخال عمر صالح (13-120)',
+    validPhoneRequired: 'يرجى إدخال رقم هاتف صالح',
+    addressRequired: 'العنوان التفصيلي مطلوب',
+    locationRequired: 'يرجى تحديد موقعك على الخريطة',
   },
   en: {
-  deliveryInformation: "Delivery Information",
-  fullName: "Full Name",
-  age: "Age",
-  phoneNumber: "Phone Number",
-  detailedAddress: "Detailed Address",
-  selectLocationOnMap: "Select Location on Map",
-  geolocationNotSupported: "Geolocation not supported in your browser",
-  loadingMap: "Loading map...",
-  clickMapToSelectLocation: "Click on the map to select your exact location",
-  saveDeliveryInfo: "Save Delivery Information",
-  completeDeliveryInfo: "Complete Delivery Info",
-  pleaseCompleteDeliveryInfo: "Please complete delivery information before checkout",
-  nameRequired: "Full name is required",
-  validAgeRequired: "Please enter a valid age (13-120)",
-  validPhoneRequired: "Please enter a valid phone number",
-  addressRequired: "Detailed address is required",
-  locationRequired: "Please select your location on the map",
-
-
     // App & Brand
     appName: 'ShopEasy',
     Louable: 'Louable',
-    
+
     // Navigation & General
     home: 'Home',
     products: 'Products',
@@ -200,7 +187,7 @@ const translations = {
     viewDetails: 'View Details',
     goToCart: 'Go to Cart',
     continueShopping: 'Continue Shopping',
-    
+
     // Hero & Home
     featuredProducts: 'Featured Products',
     discoverPremium: 'Discover our premium chocolate collection ✨',
@@ -208,7 +195,7 @@ const translations = {
     noProductsAvailable: 'No products available yet',
     checkBackSoon: 'Check back soon for delicious chocolates!',
     loadingPremiumChocolates: 'Loading premium chocolates...',
-    
+
     // Product Details
     piecesPerBox: 'Pieces per Box',
     pieces: 'pieces',
@@ -219,10 +206,14 @@ const translations = {
     price: 'Price',
     quantity: 'Quantity',
     addToCart: 'Add to Cart',
+    // FIX: Added missing translation key used in ProductCard & ProductDetail success notification
+    addedToCart: 'Added to cart',
     premiumQuality: 'Premium Quality',
     loadingProductDetails: 'Loading product details...',
     productImage: 'Product Image',
-    
+    review: 'review',
+    reviews: 'reviews',
+
     // Stock Management
     outOfStock: 'Out of Stock',
     onlyLeft: 'Only {count} left!',
@@ -234,7 +225,7 @@ const translations = {
     maxReached: 'Max reached',
     maxAvailable: 'Max {count}',
     increaseQuantity: 'Increase quantity',
-    
+
     // Cart
     cart: 'Cart',
     total: 'Total',
@@ -264,12 +255,12 @@ const translations = {
     orderSummary: 'Order Summary',
     adjustQuantitiesBeforeCheckout: 'Adjust quantities before checkout',
     productNotAvailable: 'Product is not available',
-    
+
     // Theme
     theme: 'Theme',
     lightMode: 'Light Mode',
     darkMode: 'Dark Mode',
-    
+
     // About Us
     aboutUsTitle: 'About Us',
     ourMission: 'Our Mission',
@@ -281,14 +272,14 @@ const translations = {
     joinOurSweetJourney: 'Join Our Sweet Journey',
     experienceFinest: 'Experience the finest chocolates crafted with love and dedication. Every piece tells a story of quality and passion.',
     exploreOurProducts: 'Explore Our Products',
-    
+
     // Footer
     footerTagline: 'Crafting premium chocolates with passion and excellence. Every piece tells a story of quality and taste.',
     quickLinks: 'Quick Links',
     followUs: 'Follow Us',
     allRightsReserved: 'All rights reserved',
     handcraftedWith: 'Handcrafted with',
-    
+
     // Legal
     privacyPolicy: 'Privacy Policy',
     termsOfService: 'Terms of Service',
@@ -306,7 +297,7 @@ const translations = {
     yourRights: 'Your Rights',
     rightsText: 'You have the right to request deletion or correction of your data at any time by contacting us.',
     contactPrivacyText: 'For any questions about this Privacy Policy, please email us at: louablefactory@gmail.com',
-    
+
     // Order Success
     orderConfirmed: 'Order Confirmed!',
     thankYouPurchase: 'Thank you for your purchase. Your order has been successfully processed.',
@@ -314,18 +305,37 @@ const translations = {
     orderDetails: 'Order Details',
     transaction: 'Transaction:',
     totalPaid: 'Total Paid:',
-    
+
     // Terms of Service
     acceptanceOfTerms: 'Acceptance of Terms',
     paymentProcessing: 'Payment Processing',
     productInfo: 'Product Information',
     userResponsibilities: 'User Responsibilities',
     limitationOfLiability: 'Limitation of Liability',
-    
+
     // Pi Status
     piConnected: '✅ Pi Connected',
     piFailed: '❌ Pi Failed',
-    connecting: '⏳ Connecting...'
+    connecting: '⏳ Connecting...',
+
+    // Delivery
+    deliveryInformation: 'Delivery Information',
+    fullName: 'Full Name',
+    age: 'Age',
+    phoneNumber: 'Phone Number',
+    detailedAddress: 'Detailed Address',
+    selectLocationOnMap: 'Select Location on Map',
+    geolocationNotSupported: 'Geolocation not supported in your browser',
+    loadingMap: 'Loading map...',
+    clickMapToSelectLocation: 'Click on the map to select your exact location',
+    saveDeliveryInfo: 'Save Delivery Information',
+    completeDeliveryInfo: 'Complete Delivery Info',
+    pleaseCompleteDeliveryInfo: 'Please complete delivery information before checkout',
+    nameRequired: 'Full name is required',
+    validAgeRequired: 'Please enter a valid age (13-120)',
+    validPhoneRequired: 'Please enter a valid phone number',
+    addressRequired: 'Detailed address is required',
+    locationRequired: 'Please select your location on the map',
   }
 }
 
@@ -352,12 +362,12 @@ export function LanguageProvider({ children }) {
   // Enhanced translation function with interpolation support
   const t = (key, params = {}) => {
     let text = translations[lang][key] || key
-    
+
     // Handle interpolation for dynamic values like {count}
     Object.keys(params).forEach(param => {
       text = text.replace(`{${param}}`, params[param])
     })
-    
+
     return text
   }
 
