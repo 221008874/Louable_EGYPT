@@ -506,111 +506,137 @@ export default function CartPage() {
 
   // ============ CHECKOUT WITH KASHIER ============
   // UPDATED: Currency-aware checkout
-  const handleCheckout = useCallback(async () => {
-    if (!canCheckout || Object.keys(stockErrors).length > 0) {
-      alert(t('resolveStockIssues') || 'Please resolve stock issues before checkout')
-      return
+  // ============ CHECKOUT WITH DUAL COLLECTION WRITE ============
+const handleCheckout = useCallback(async () => {
+  if (!canCheckout || Object.keys(stockErrors).length > 0) {
+    alert(t('resolveStockIssues') || 'Please resolve stock issues before checkout')
+    return
+  }
+
+  setIsProcessing(true)
+  const orderId = `order_${Date.now()}`
+  
+  try {
+    // Import writeBatch for atomic operations
+    const { writeBatch, doc, collection, addDoc, serverTimestamp } = await import('firebase/firestore')
+    
+    const batch = writeBatch(db)
+    
+    // Prepare order data (shared between both collections)
+    const orderData = {
+      orderId,
+      userId: `guest_${Date.now()}`,
+      items: items.map(item => ({
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity || 1
+      })),
+      totalPrice: finalPrice,
+      totalItems: items.reduce((sum, item) => sum + (item.quantity || 1), 0),
+      currency: currencyConfig.code,
+      paymentMethod: paymentMethod === 'cod' ? 'Cash on Delivery' : 'Card (Kashier)',
+      paymentStatus: paymentMethod === 'cod' ? 'pending' : 'awaiting_payment',
+      status: 'pending',
+      customerName: deliveryInfo.name,
+      customerPhone: deliveryInfo.phone,
+      customerEmail: deliveryInfo.email,
+      customerAddress: deliveryInfo.address,
+      customerLocation: {
+        latitude: deliveryInfo.latitude,
+        longitude: deliveryInfo.longitude
+      },
+      coupon: appliedCoupon?.label || null,
+      shipping: shippingDetails,
+      source: 'web', // Track that this came from web
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
     }
 
-    setIsProcessing(true)
-    const orderId = `order_${Date.now()}`
-    
-    try {
-      // UPDATED: Use currency-specific order collection
-      const orderRef = await addDoc(collection(db, currencyConfig.orderCollection), {
-        orderId,
-        userId: `guest_${Date.now()}`,
-        items: items.map(item => ({
-          id: item.id,
-          name: item.name,
-          price: item.price,
-          quantity: item.quantity || 1
-        })),
-        totalPrice: finalPrice,
-        totalItems: items.reduce((sum, item) => sum + (item.quantity || 1), 0),
-        currency: currencyConfig.code, // UPDATED: Use detected currency
-        paymentMethod: paymentMethod === 'cod' ? 'Cash on Delivery' : 'Card (Kashier)',
-        paymentStatus: paymentMethod === 'cod' ? 'pending' : 'awaiting_payment',
-        status: 'pending',
-        customerName: deliveryInfo.name,
-        customerPhone: deliveryInfo.phone,
-        customerEmail: deliveryInfo.email,
-        customerAddress: deliveryInfo.address,
-        customerLocation: {
-          latitude: deliveryInfo.latitude,
-          longitude: deliveryInfo.longitude
-        },
-        coupon: appliedCoupon?.label || null,
-        shipping: shippingDetails,
-        createdAt: serverTimestamp()
-      })
+    // 1. Write to original currency-specific collection (for web app)
+    const currencyOrderRef = doc(collection(db, currencyConfig.orderCollection))
+    batch.set(currencyOrderRef, orderData)
 
-      // KASHIER CARD PAYMENT
-      if (paymentMethod === 'card') {
-        const { kashierApi } = await import('../api/kashier')
-        
-        if (!deliveryInfo.email) {
-          throw new Error('Email is required for card payments')
-        }
+    // 2. Write to unified mobile_orders collection (for Flutter app)
+    // Using the same orderId as document ID for easy cross-referencing
+    const mobileOrderRef = doc(db, 'mobile_orders', orderId)
+    batch.set(mobileOrderRef, {
+      ...orderData,
+      webOrderRef: currencyOrderRef.id, // Reference to original order
+      platform: 'web',
+      isRead: false, // For Flutter app's unread count functionality
+      syncedToMobile: true
+    })
 
-        // UPDATED: Use currency in payment
-        const paymentResult = await kashierApi.createPayment({
-          amount: finalPrice,
-          currency: currencyConfig.code, // UPDATED: Use detected currency
-          customerEmail: deliveryInfo.email,
-          customerPhone: deliveryInfo.phone,
-          orderId: orderId,
-          description: `Order #${orderId} - Louable Chocolates (${currencyConfig.code})`
-        })
+    // Commit both writes atomically
+    await batch.commit()
 
-        if (paymentResult.success && paymentResult.checkoutUrl) {
-          sessionStorage.setItem('pendingOrderId', orderId)
-          sessionStorage.setItem('pendingFirestoreId', orderRef.id)
-          sessionStorage.setItem('pendingCurrency', currencyConfig.code) // Store currency for return
-          
-          window.location.href = paymentResult.checkoutUrl
-          return
-        } else {
-          throw new Error('Failed to create payment session')
-        }
+    // KASHIER CARD PAYMENT
+    if (paymentMethod === 'card') {
+      const { kashierApi } = await import('../api/kashier')
+      
+      if (!deliveryInfo.email) {
+        throw new Error('Email is required for card payments')
       }
 
-      // CASH ON DELIVERY
-      clearCart()
-      clearDeliveryInfo()
-      navigate('/order-success', {
-        state: {
-          orderId,
-          txid: `TXN-${Date.now()}`,
-          totalPrice: finalPrice,
-          items,
-          deliveryInfo,
-          shipping: shippingDetails,
-          paymentMethod: 'cod',
-          currency: currencyConfig.code // UPDATED: Pass currency to success page
-        }
+      const paymentResult = await kashierApi.createPayment({
+        amount: finalPrice,
+        currency: currencyConfig.code,
+        customerEmail: deliveryInfo.email,
+        customerPhone: deliveryInfo.phone,
+        orderId: orderId,
+        description: `Order #${orderId} - Louable Chocolates (${currencyConfig.code})`
       })
 
-    } catch (error) {
-      console.error('Checkout error:', error)
-      alert(t('checkoutFailed') + ': ' + (error.message || t('tryAgain')))
-      setIsProcessing(false)
+      if (paymentResult.success && paymentResult.checkoutUrl) {
+        sessionStorage.setItem('pendingOrderId', orderId)
+        sessionStorage.setItem('pendingFirestoreId', currencyOrderRef.id)
+        sessionStorage.setItem('pendingMobileOrderId', mobileOrderRef.id) // Store mobile ref too
+        sessionStorage.setItem('pendingCurrency', currencyConfig.code)
+        
+        window.location.href = paymentResult.checkoutUrl
+        return
+      } else {
+        throw new Error('Failed to create payment session')
+      }
     }
-  }, [
-    canCheckout, 
-    items, 
-    finalPrice, 
-    deliveryInfo, 
-    appliedCoupon, 
-    shippingDetails, 
-    paymentMethod, 
-    stockErrors,
-    t,
-    clearCart, 
-    clearDeliveryInfo, 
-    navigate,
-    currencyConfig // ADDED dependency
-  ])
+
+    // CASH ON DELIVERY
+    clearCart()
+    clearDeliveryInfo()
+    navigate('/order-success', {
+      state: {
+        orderId,
+        txid: `TXN-${Date.now()}`,
+        totalPrice: finalPrice,
+        items,
+        deliveryInfo,
+        shipping: shippingDetails,
+        paymentMethod: 'cod',
+        currency: currencyConfig.code
+      }
+    })
+
+  } catch (error) {
+    console.error('Checkout error:', error)
+    alert(t('checkoutFailed') + ': ' + (error.message || t('tryAgain')))
+    setIsProcessing(false)
+  }
+}, [
+  canCheckout, 
+  items, 
+  finalPrice, 
+  deliveryInfo, 
+  appliedCoupon, 
+  shippingDetails, 
+  paymentMethod, 
+  stockErrors,
+  t,
+  clearCart, 
+  clearDeliveryInfo, 
+  navigate,
+  currencyConfig
+])
 
   const handleQuantityUpdate = useCallback(async (item, newQuantity) => {
     if (newQuantity < 1) {
@@ -2254,34 +2280,36 @@ export default function CartPage() {
                   </label>
                 )}
 
-                {/* Credit/Debit Card - Available for both */}
-                <label style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  padding: '14px',
-                  background: paymentMethod === 'card' ? `${c.secondary}15` : c.overlay,
-                  border: `2px solid ${paymentMethod === 'card' ? c.secondary : c.border}`,
-                  borderRadius: '12px',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease'
-                }}>
-                  <input
-                    type="radio"
-                    name="payment"
-                    value="card"
-                    checked={paymentMethod === 'card'}
-                    onChange={(e) => setPaymentMethod(e.target.value)}
-                    style={{ width: '20px', height: '20px', accentColor: c.secondary }}
-                  />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: '800', color: c.textDark }}>Credit/Debit Card</div>
-                    <div style={{ fontSize: '0.8rem', color: c.textMuted }}>
-                      Secure payment via Kashier ({currencyConfig.code})
-                    </div>
-                  </div>
-                  <span style={{ fontSize: '1.5rem' }}>💳</span>
-                </label>
+                {/* Credit/Debit Card - DISABLED */}
+<label style={{
+  display: 'flex',
+  alignItems: 'center',
+  gap: '12px',
+  padding: '14px',
+  background: c.overlay,
+  border: `2px solid ${c.border}`,
+  borderRadius: '12px',
+  cursor: 'not-allowed',
+  transition: 'all 0.3s ease',
+  opacity: 0.5
+}}>
+  <input
+    type="radio"
+    name="payment"
+    value="card"
+    checked={false}
+    disabled={true}
+    onChange={() => {}}
+    style={{ width: '20px', height: '20px', accentColor: c.secondary }}
+  />
+  <div style={{ flex: 1 }}>
+    <div style={{ fontWeight: '800', color: c.textMuted }}>Credit/Debit Card</div>
+    <div style={{ fontSize: '0.8rem', color: c.textMuted }}>
+      Temporarily unavailable
+    </div>
+  </div>
+  <span style={{ fontSize: '1.5rem', opacity: 0.5 }}>💳</span>
+</label>
               </div>
             </div>
 
