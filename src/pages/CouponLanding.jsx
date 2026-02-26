@@ -44,81 +44,96 @@ export default function CouponLanding() {
   }
 
   const c = colors[theme] || colors.light
-
-  useEffect(() => {
-    const validateCoupon = async () => {
-      try {
-        // Check if coupon is already in session (prevent re-scanning)
-const sessionApplied = sessionStorage.getItem(`coupon_${code}_used`)
-        if (sessionApplied) {
-          setAlreadyApplied(true)
-          setLoading(false)
-          return
-        }
-
-        // Fetch coupon from Firestore
-        const couponsRef = collection(db, 'egp_coupons')
-        const q = query(couponsRef, where('code', '==', code.toUpperCase()))
-        const snapshot = await getDocs(q)
-
-        if (snapshot.empty) {
-          setError('Invalid coupon code')
-          setLoading(false)
-          return
-        }
-
-        const couponDoc = snapshot.docs[0]
-        const couponData = couponDoc.data()
-
-        // Check if active
-        if (!couponData.isActive) {
-          setError('This coupon is no longer active')
-          setLoading(false)
-          return
-        }
-
-        // Check expiration
-        const now = new Date()
-        const expiresAt = couponData.expiresAt?.toDate?.() || new Date(couponData.expiresAt)
-        if (expiresAt < now) {
-          setError('This coupon has expired')
-          setLoading(false)
-          return
-        }
-
-        // Check usage limit
-        if (couponData.usedCount >= couponData.maxUses) {
-          setError('This coupon has reached its usage limit')
-          setLoading(false)
-          return
-        }
-
-        setCoupon({
-          id: couponDoc.id,
-          ...couponData,
-          expiresAt: expiresAt
-        })
-
-        // Store coupon code for pre-filling in cart
-        sessionStorage.setItem('prefillCouponCode', couponData.code)
-        // Also store full data for auto-apply
-        sessionStorage.setItem('autoApplyCoupon', JSON.stringify({
-          id: couponDoc.id,
-          code: couponData.code,
-          amount: couponData.amount,
-          currency: couponData.currency || 'EGP'
-        }))
-
-        setLoading(false)
-      } catch (err) {
-        console.error('Coupon validation error:', err)
-        setError('Failed to validate coupon')
-        setLoading(false)
+useEffect(() => {
+  const validateCoupon = async () => {
+    try {
+      // Check session first
+      const sessionApplied = sessionStorage.getItem(`coupon_${code}_used`);
+      if (sessionApplied) {
+        setAlreadyApplied(true);
+        setLoading(false);
+        return;
       }
-    }
 
-    validateCoupon()
-  }, [code])
+      // Query with BOTH filters to minimize data exposure
+      const couponsRef = collection(db, 'egp_coupons');
+      const q = query(
+        couponsRef, 
+        where('code', '==', code.toUpperCase()),
+        where('isActive', '==', true),  // Add this filter
+        limit(1)
+      );
+      
+      const snapshot = await getDocs(q);
+
+      if (snapshot.empty) {
+        setError('Invalid coupon code');
+        setLoading(false);
+        return;
+      }
+
+      const couponDoc = snapshot.docs[0];
+      const couponData = couponDoc.data();
+
+      // CRITICAL: Double-check everything client-side
+      const now = new Date();
+      const expiresAt = couponData.expiresAt?.toDate?.() || new Date(couponData.expiresAt);
+      
+      // Verify all conditions (defense in depth)
+      if (!couponData.isActive) {
+        setError('This coupon is no longer active');
+        setLoading(false);
+        return;
+      }
+
+      if (expiresAt < now) {
+        setError('This coupon has expired');
+        setLoading(false);
+        return;
+      }
+
+      if (couponData.usedCount >= couponData.maxUses) {
+        setError('This coupon has reached its usage limit');
+        setLoading(false);
+        return;
+      }
+
+      // Additional security: verify the code matches exactly
+      if (couponData.code !== code.toUpperCase()) {
+        setError('Invalid coupon code');
+        setLoading(false);
+        return;
+      }
+
+      // Success - set coupon
+      setCoupon({
+        id: couponDoc.id,
+        ...couponData,
+        expiresAt: expiresAt
+      });
+
+      // Store for cart auto-apply
+      sessionStorage.setItem('prefillCouponCode', couponData.code);
+      sessionStorage.setItem('autoApplyCoupon', JSON.stringify({
+        id: couponDoc.id,
+        code: couponData.code,
+        amount: couponData.amount,
+        currency: couponData.currency || 'EGP',
+        expiresAt: expiresAt.toISOString()
+      }));
+
+      setLoading(false);
+    } catch (err) {
+      console.error('Coupon validation error:', err);
+      setError('Failed to validate coupon. Please try again.');
+      setLoading(false);
+    }
+  };
+
+  if (code) {
+    validateCoupon();
+  }
+}, [code]);
 
   const handleContinueShopping = () => {
     navigate('/home', { state: { couponApplied: true, couponCode: code } })
