@@ -4,13 +4,24 @@ import { useNavigate } from 'react-router-dom'
 import { useCart } from '../context/CartContext'
 import { useLanguage } from '../context/LanguageContext'
 import { useTheme } from '../context/ThemeContext'
-import { useLocation } from '../context/LocationContext' // ADDED: Import currency context
+import { useLocation } from '../context/LocationContext'
 import { db } from '../services/firebase'
-import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore'
+import { 
+  collection, 
+  addDoc, 
+  serverTimestamp, 
+  doc, 
+  getDoc, 
+  query,
+  where,
+  getDocs, 
+  updateDoc, 
+  increment,
+  writeBatch 
+} from 'firebase/firestore'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
-// Fix Leaflet default marker icon issue in webpack/vite
 import markerIcon from 'leaflet/dist/images/marker-icon.png'
 import markerShadow from 'leaflet/dist/images/marker-shadow.png'
 
@@ -22,6 +33,37 @@ let DefaultIcon = L.icon({
 })
 
 L.Marker.prototype.options.icon = DefaultIcon
+
+// FIXED: Egypt governorates list for dropdown selection
+const EGYPT_GOVERNORATES = [
+  { id: 'cairo', name: 'Cairo', nameAr: 'القاهرة' },
+  { id: 'giza', name: 'Giza', nameAr: 'الجيزة' },
+  { id: 'alexandria', name: 'Alexandria', nameAr: 'الإسكندرية' },
+  { id: 'qalyubia', name: 'Qalyubia', nameAr: 'القليوبية' },
+  { id: 'monufia', name: 'Monufia', nameAr: 'المنوفية' },
+  { id: 'gharbia', name: 'Gharbia', nameAr: 'الغربية' },
+  { id: 'dakahlia', name: 'Dakahlia', nameAr: 'الدقهلية' },
+  { id: 'sharkia', name: 'Sharqia', nameAr: 'الشرقية' },
+  { id: 'beheira', name: 'Beheira', nameAr: 'البحيرة' },
+  { id: 'kafr_sheikh', name: 'Kafr El Sheikh', nameAr: 'كفر الشيخ' },
+  { id: 'damietta', name: 'Damietta', nameAr: 'دمياط' },
+  { id: 'port_said', name: 'Port Said', nameAr: 'بورسعيد' },
+  { id: 'ismailia', name: 'Ismailia', nameAr: 'الإسماعيلية' },
+  { id: 'suez', name: 'Suez', nameAr: 'السويس' },
+  { id: 'matrouh', name: 'Matrouh', nameAr: 'مطروح' },
+  { id: 'north_sinai', name: 'North Sinai', nameAr: 'شمال سيناء' },
+  { id: 'south_sinai', name: 'South Sinai', nameAr: 'جنوب سيناء' },
+  { id: 'faiyum', name: 'Faiyum', nameAr: 'الفيوم' },
+  { id: 'beni_suef', name: 'Beni Suef', nameAr: 'بني سويف' },
+  { id: 'minya', name: 'Minya', nameAr: 'المنيا' },
+  { id: 'asyut', name: 'Asyut', nameAr: 'أسيوط' },
+  { id: 'sohag', name: 'Sohag', nameAr: 'سوهاج' },
+  { id: 'qena', name: 'Qena', nameAr: 'قنا' },
+  { id: 'luxor', name: 'Luxor', nameAr: 'الأقصر' },
+  { id: 'aswan', name: 'Aswan', nameAr: 'أسوان' },
+  { id: 'red_sea', name: 'Red Sea', nameAr: 'البحر الأحمر' },
+  { id: 'new_valley', name: 'New Valley', nameAr: 'الوادي الجديد' }
+]
 
 export default function CartPage() {
   const {
@@ -39,27 +81,25 @@ export default function CartPage() {
   } = useCart()
   const { t } = useLanguage()
   const { theme } = useTheme()
-  const { currency } = useLocation() // ADDED: Get currency from context
+  const { currency } = useLocation()
   const navigate = useNavigate()
 
   // ============ CURRENCY CONFIGURATION ============
-  // Determine currency symbol and collection name based on detected currency
   const currencyConfig = useMemo(() => {
     if (currency === 'USD') {
       return {
         symbol: '$',
         code: 'USD',
         collection: 'products_dollar',
-        orderCollection: 'orders_usd',
-        // USD shipping zones (different pricing for international)
+        orderCollection: 'orders_dollar',
+        // USD shipping - simplified zones for international
         shippingZones: {
-          local: { name: 'USA Standard', baseCost: 15, maxDistance: 500 }, // miles
-          upper: { name: 'USA Express', baseCost: 25, maxDistance: 1500 },
-          cairo: { name: 'Canada', baseCost: 30, maxDistance: 3000 },
-          delta: { name: 'Europe', baseCost: 35, maxDistance: 6000 },
-          remote: { name: 'Rest of World', baseCost: 50, maxDistance: 99999 }
+          usa: { name: 'USA', baseCost: 15 },
+          canada: { name: 'Canada', baseCost: 25 },
+          europe: { name: 'Europe', baseCost: 35 },
+          other: { name: 'Rest of World', baseCost: 50 }
         },
-        freeShippingThreshold: 150 // USD
+        freeShippingThreshold: 150
       }
     }
     // Default to EGP for Egypt
@@ -68,14 +108,8 @@ export default function CartPage() {
       code: 'EGP',
       collection: 'products_egp',
       orderCollection: 'orders_egp',
-      shippingZones: {
-        local: { name: 'Luxor & Aswan', baseCost: 40, maxDistance: 220 },
-        upper: { name: 'Upper Egypt', baseCost: 60, maxDistance: 350 },
-        cairo: { name: 'Cairo & Giza', baseCost: 80, maxDistance: 550 },
-        delta: { name: 'Delta & Alexandria', baseCost: 90, maxDistance: 700 },
-        remote: { name: 'Red Sea & Sinai', baseCost: 110, maxDistance: 9999 }
-      },
-      freeShippingThreshold: 800 // EGP
+      // EGP uses governorate-based shipping from Firestore
+      freeShippingThreshold: 800
     }
   }, [currency])
 
@@ -90,8 +124,8 @@ export default function CartPage() {
   const [hoveredItem, setHoveredItem] = useState(null)
   const [scrollY, setScrollY] = useState(0)
 
-  // ============ ADDED: PAYMENT METHOD STATE ============
-  const [paymentMethod, setPaymentMethod] = useState('cod') // 'cod' or 'card'
+  // ============ PAYMENT METHOD STATE ============
+  const [paymentMethod, setPaymentMethod] = useState('cod')
 
   // ============ FULL-SCREEN MAP EDITOR STATES ============
   const [showMapEditor, setShowMapEditor] = useState(false)
@@ -102,69 +136,14 @@ export default function CartPage() {
   const [searchResults, setSearchResults] = useState([])
   const [isSearching, setIsSearching] = useState(false)
   
-  // Leaflet map refs
   const mapRef = useRef(null)
   const mapContainerRef = useRef(null)
   const markerRef = useRef(null)
 
-  // ============ SHIPPING CONFIGURATION ============
-  // Use currency-specific warehouse location and zones
-  const WAREHOUSE_LOCATION = useMemo(() => {
-    if (currency === 'USD') {
-      // Default to New York for USD orders (you can adjust this)
-      return { lat: 40.7128, lng: -74.0060 }
-    }
-    // Luxor for EGP orders
-    return { lat: 25.6872, lng: 32.6396 }
-  }, [currency])
-
-  const SHIPPING_ZONES = currencyConfig.shippingZones
-  const FREE_SHIPPING_THRESHOLD = currencyConfig.freeShippingThreshold
-
-  // ============ SHIPPING CALCULATION FUNCTIONS ============
-  const getDistanceFromLatLonInKm = (lat1, lng1, lat2, lng2) => {
-    const R = 6371
-    const dLat = (lat2 - lat1) * Math.PI / 180
-    const dLng = (lng2 - lng1) * Math.PI / 180
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-      Math.sin(dLng / 2) * Math.sin(dLng / 2)
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-    return R * c
-  }
-
-  const calculateShipping = useCallback(() => {
-    if (!deliveryInfo?.latitude || !deliveryInfo?.longitude) {
-      return { cost: 0, zone: 'Pending', isFree: false }
-    }
-
-    const distance = getDistanceFromLatLonInKm(
-      WAREHOUSE_LOCATION.lat,
-      WAREHOUSE_LOCATION.lng,
-      deliveryInfo.latitude,
-      deliveryInfo.longitude
-    )
-
-    let zone = SHIPPING_ZONES.remote
-    if (distance <= SHIPPING_ZONES.local.maxDistance) zone = SHIPPING_ZONES.local
-    else if (distance <= SHIPPING_ZONES.upper.maxDistance) zone = SHIPPING_ZONES.upper
-    else if (distance <= SHIPPING_ZONES.cairo.maxDistance) zone = SHIPPING_ZONES.cairo
-    else if (distance <= SHIPPING_ZONES.delta.maxDistance) zone = SHIPPING_ZONES.delta
-
-    let cost = zone.baseCost
-    const isFree = totalPrice >= FREE_SHIPPING_THRESHOLD
-    if (isFree) cost = 0
-
-    return {
-      cost,
-      zone: zone.name,
-      distance: Math.round(distance),
-      isFree
-    }
-  }, [deliveryInfo, totalPrice, WAREHOUSE_LOCATION, SHIPPING_ZONES, FREE_SHIPPING_THRESHOLD])
-
-  const shippingDetails = calculateShipping()
+  // ============ FIXED: Governorate-based shipping states ============
+  const [governorateCosts, setGovernorateCosts] = useState({})
+  const [selectedGovernorate, setSelectedGovernorate] = useState(deliveryInfo?.governorate || '')
+  const [loadingGovernorates, setLoadingGovernorates] = useState(false)
 
   // ============ DELIVERY FORM STATES ============
   const [formData, setFormData] = useState({
@@ -173,6 +152,7 @@ export default function CartPage() {
     email: deliveryInfo?.email || '',
     address: deliveryInfo?.address || '',
     city: deliveryInfo?.city || '',
+    governorate: deliveryInfo?.governorate || '',
     latitude: deliveryInfo?.latitude || null,
     longitude: deliveryInfo?.longitude || null
   })
@@ -190,6 +170,71 @@ export default function CartPage() {
 
   const isMobile = windowWidth < 768
   const isSmallMobile = windowWidth < 480
+
+  // ============ FIXED: Load governorate costs from Firestore ============
+  useEffect(() => {
+    const loadGovernorateCosts = async () => {
+      if (currency !== 'EGP') return // Only for Egypt
+      
+      setLoadingGovernorates(true)
+      try {
+        const costsRef = collection(db, 'egp_governorate_costs')
+        const snapshot = await getDocs(costsRef)
+        const costs = {}
+        snapshot.docs.forEach(doc => {
+          costs[doc.id] = doc.data().cost
+        })
+        setGovernorateCosts(costs)
+      } catch (error) {
+        console.error('Error loading governorate costs:', error)
+        // Fallback costs if Firestore fails
+        const fallbackCosts = {}
+        EGYPT_GOVERNORATES.forEach(gov => {
+          fallbackCosts[gov.id] = 50 // Default fallback
+        })
+        setGovernorateCosts(fallbackCosts)
+      } finally {
+        setLoadingGovernorates(false)
+      }
+    }
+
+    loadGovernorateCosts()
+  }, [currency])
+
+  // ============ FIXED: Calculate shipping based on governorate ============
+  const calculateShipping = useCallback(() => {
+    // For USD, use zone-based (simplified)
+    if (currency === 'USD') {
+      // Simple zone detection based on country/region could go here
+      // For now, use 'other' as default for international
+      const zone = currencyConfig.shippingZones.other
+      const cost = totalPrice >= currencyConfig.freeShippingThreshold ? 0 : zone.baseCost
+      return {
+        cost,
+        zone: zone.name,
+        isFree: cost === 0
+      }
+    }
+
+    // For EGP, use governorate-based
+    if (!selectedGovernorate) {
+      return { cost: 0, zone: 'Select Governorate', isFree: false }
+    }
+
+    const governorateCost = governorateCosts[selectedGovernorate] || 50
+    const isFree = totalPrice >= currencyConfig.freeShippingThreshold
+    const cost = isFree ? 0 : governorateCost
+    
+    const govName = EGYPT_GOVERNORATES.find(g => g.id === selectedGovernorate)?.name || selectedGovernorate
+
+    return {
+      cost,
+      zone: govName,
+      isFree
+    }
+  }, [currency, selectedGovernorate, governorateCosts, totalPrice, currencyConfig])
+
+  const shippingDetails = calculateShipping()
 
   // ============ SCROLL ANIMATIONS ============
   useEffect(() => {
@@ -212,10 +257,9 @@ export default function CartPage() {
     setMapLoading(true)
     if (!navigator.geolocation) {
       setMapError(true)
-      // Default center based on currency
       setMapCenter(currency === 'USD' 
-        ? { lat: 40.7128, lng: -74.0060 } // New York
-        : { lat: 30.0444, lng: 31.2357 }  // Cairo
+        ? { lat: 40.7128, lng: -74.0060 }
+        : { lat: 30.0444, lng: 31.2357 }
       )
       setMapLoading(false)
       return
@@ -236,7 +280,6 @@ export default function CartPage() {
       (error) => {
         console.warn('Geolocation error:', error)
         setMapError(true)
-        // Default center based on currency
         setMapCenter(currency === 'USD' 
           ? { lat: 40.7128, lng: -74.0060 }
           : { lat: 30.0444, lng: 31.2357 }
@@ -248,7 +291,6 @@ export default function CartPage() {
   }, [currency])
 
   // ============ PRODUCT DETAILS FETCH ============
-  // UPDATED: Use currency-specific collection
   useEffect(() => {
     const fetchProductDetails = async () => {
       const details = {}
@@ -256,7 +298,6 @@ export default function CartPage() {
 
       await Promise.all(items.map(async (item) => {
         try {
-          // Use the appropriate collection based on currency
           const docRef = doc(db, currencyConfig.collection, item.id)
           const docSnap = await getDoc(docRef)
 
@@ -294,8 +335,13 @@ export default function CartPage() {
 
   // ============ DERIVED STATE ============
   const hasDeliveryInfo = useMemo(() => {
-    return deliveryInfo && deliveryInfo.name && deliveryInfo.phone && deliveryInfo.email && deliveryInfo.address
-  }, [deliveryInfo])
+    const baseInfo = deliveryInfo && deliveryInfo.name && deliveryInfo.phone && deliveryInfo.email && deliveryInfo.address
+    // For EGP, also require governorate
+    if (currency === 'EGP') {
+      return baseInfo && deliveryInfo.governorate
+    }
+    return baseInfo
+  }, [deliveryInfo, currency])
 
   const canCheckout = useMemo(() => {
     return Object.keys(stockErrors).length === 0 && hasDeliveryInfo && !isProcessing
@@ -309,6 +355,20 @@ export default function CartPage() {
       setFormErrors(prev => {
         const next = { ...prev }
         delete next[name]
+        return next
+      })
+    }
+  }
+
+  // FIXED: Handle governorate selection
+  const handleGovernorateChange = (e) => {
+    const governorateId = e.target.value
+    setSelectedGovernorate(governorateId)
+    setFormData(prev => ({ ...prev, governorate: governorateId }))
+    if (formErrors.governorate) {
+      setFormErrors(prev => {
+        const next = { ...prev }
+        delete next.governorate
         return next
       })
     }
@@ -330,14 +390,19 @@ export default function CartPage() {
     if (!formData.address.trim() || formData.address.trim().length < 10) {
       errors.address = t('addressTooShort')
     }
-    if (!formData.city.trim()) errors.city = t('cityRequired')
+    
+    // FIXED: Validate governorate for EGP
+    if (currency === 'EGP' && !formData.governorate) {
+      errors.governorate = 'Please select your governorate'
+    }
+    
     if (!formData.latitude || !formData.longitude) {
       errors.location = t('locationRequired')
     }
 
     setFormErrors(errors)
     return Object.keys(errors).length === 0
-  }, [formData, t])
+  }, [formData, t, currency])
 
   const handleSaveDelivery = (e) => {
     e.preventDefault()
@@ -353,7 +418,6 @@ export default function CartPage() {
     
     setIsSearching(true)
     try {
-      // For USD orders, search worldwide; for EGP, restrict to Egypt
       const countryCodes = currency === 'USD' ? '' : '&countrycodes=eg'
       const response = await fetch(
         `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}${countryCodes}&limit=5`
@@ -481,162 +545,179 @@ export default function CartPage() {
   }, [tempLocation, handleCloseMapEditor])
 
   // ============ COUPON HANDLING ============
-  const COUPONS = useMemo(() => ({
-    'SAVE10': { discount: 0.10, label: '10% off' },
-    'SAVE20': { discount: 0.20, label: '20% off' },
-    'WELCOME': { discount: 0.15, label: '15% off' }
-  }), [])
+  const [couponLoading, setCouponLoading] = useState(false)
+  const [couponError, setCouponError] = useState(null)
 
-  const handleApplyCoupon = useCallback(() => {
+  const handleApplyCoupon = useCallback(async () => {
     const code = couponInput.toUpperCase().trim()
-    const coupon = COUPONS[code]
+    if (!code) return
     
-    if (coupon) {
-      setAppliedCoupon(coupon)
+    setCouponLoading(true)
+    setCouponError(null)
+    
+    try {
+      const couponsRef = collection(db, 'egp_coupons')
+      const q = query(couponsRef, where('code', '==', code), where('isActive', '==', true))
+      const snapshot = await getDocs(q)
+      
+      if (snapshot.empty) {
+        setCouponError(t('invalidCoupon') || 'Invalid or expired coupon')
+        setCouponLoading(false)
+        return
+      }
+      
+      const couponDoc = snapshot.docs[0]
+      const couponData = couponDoc.data()
+      
+      const now = new Date()
+      const expiresAt = couponData.expiresAt?.toDate?.() || new Date(couponData.expiresAt)
+      
+      if (expiresAt < now) {
+        setCouponError('This coupon has expired')
+        setCouponLoading(false)
+        return
+      }
+      
+      if (couponData.usedCount >= couponData.maxUses) {
+        setCouponError('This coupon has reached its usage limit')
+        setCouponLoading(false)
+        return
+      }
+      
+      setAppliedCoupon({
+        id: couponDoc.id,
+        code: couponData.code,
+        amount: couponData.amount,
+        label: `${currencyConfig.symbol} ${couponData.amount} off`
+      })
       setCouponInput('')
-    } else {
-      alert(t('invalidCoupon'))
+      
+    } catch (error) {
+      console.error('Coupon validation error:', error)
+      setCouponError('Failed to validate coupon. Please try again.')
+    } finally {
+      setCouponLoading(false)
     }
-  }, [couponInput, COUPONS, t])
+  }, [couponInput, currencyConfig.symbol, t])
 
-  const discountAmount = appliedCoupon ? totalPrice * appliedCoupon.discount : 0
-  const subtotal = totalPrice - discountAmount
+  const discountAmount = appliedCoupon ? appliedCoupon.amount : 0
+  const subtotal = Math.max(0, totalPrice - discountAmount)
   const shippingCost = shippingDetails.cost
   const finalPrice = subtotal + shippingCost
 
-  // ============ CHECKOUT WITH KASHIER ============
-  // UPDATED: Currency-aware checkout
-  // ============ CHECKOUT WITH DUAL COLLECTION WRITE ============
-const handleCheckout = useCallback(async () => {
-  if (!canCheckout || Object.keys(stockErrors).length > 0) {
-    alert(t('resolveStockIssues') || 'Please resolve stock issues before checkout')
-    return
-  }
-
-  setIsProcessing(true)
-  const orderId = `order_${Date.now()}`
-  
-  try {
-    // Import writeBatch for atomic operations
-    const { writeBatch, doc, collection, addDoc, serverTimestamp } = await import('firebase/firestore')
-    
-    const batch = writeBatch(db)
-    
-    // Prepare order data (shared between both collections)
-    const orderData = {
-      orderId,
-      userId: `guest_${Date.now()}`,
-      items: items.map(item => ({
-        id: item.id,
-        name: item.name,
-        price: item.price,
-        quantity: item.quantity || 1
-      })),
-      totalPrice: finalPrice,
-      totalItems: items.reduce((sum, item) => sum + (item.quantity || 1), 0),
-      currency: currencyConfig.code,
-      paymentMethod: paymentMethod === 'cod' ? 'Cash on Delivery' : 'Card (Kashier)',
-      paymentStatus: paymentMethod === 'cod' ? 'pending' : 'awaiting_payment',
-      status: 'pending',
-      customerName: deliveryInfo.name,
-      customerPhone: deliveryInfo.phone,
-      customerEmail: deliveryInfo.email,
-      customerAddress: deliveryInfo.address,
-      customerLocation: {
-        latitude: deliveryInfo.latitude,
-        longitude: deliveryInfo.longitude
-      },
-      coupon: appliedCoupon?.label || null,
-      shipping: shippingDetails,
-      source: 'web', // Track that this came from web
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+  // ============ CHECKOUT ============
+  const handleCheckout = useCallback(async () => {
+    if (!canCheckout || Object.keys(stockErrors).length > 0) {
+      alert(t('resolveStockIssues') || 'Please resolve stock issues before checkout')
+      return
     }
 
-    // 1. Write to original currency-specific collection (for web app)
-    const currencyOrderRef = doc(collection(db, currencyConfig.orderCollection))
-    batch.set(currencyOrderRef, orderData)
-
-    // 2. Write to unified mobile_orders collection (for Flutter app)
-    // Using the same orderId as document ID for easy cross-referencing
-    const mobileOrderRef = doc(db, 'mobile_orders', orderId)
-    batch.set(mobileOrderRef, {
-      ...orderData,
-      webOrderRef: currencyOrderRef.id, // Reference to original order
-      platform: 'web',
-      isRead: false, // For Flutter app's unread count functionality
-      syncedToMobile: true
-    })
-
-    // Commit both writes atomically
-    await batch.commit()
-
-    // KASHIER CARD PAYMENT
-    if (paymentMethod === 'card') {
-      const { kashierApi } = await import('../api/kashier')
+    setIsProcessing(true)
+    const orderId = `order_${Date.now()}`
+    
+    try {
+      const batch = writeBatch(db)
       
-      if (!deliveryInfo.email) {
-        throw new Error('Email is required for card payments')
+      const orderData = {
+        orderId,
+        userId: `guest_${Date.now()}`,
+        items: items.map(item => ({
+          id: item.id,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity || 1
+        })),
+        totalPrice: finalPrice,
+        totalItems: items.reduce((sum, item) => sum + (item.quantity || 1), 0),
+        currency: currencyConfig.code,
+        paymentMethod: paymentMethod === 'cod' ? 'Cash on Delivery' : 'Card (Kashier)',
+        paymentStatus: paymentMethod === 'cod' ? 'pending' : 'awaiting_payment',
+        status: 'pending',
+        customerName: deliveryInfo.name,
+        customerPhone: deliveryInfo.phone,
+        customerEmail: deliveryInfo.email,
+        customerAddress: deliveryInfo.address,
+        // FIXED: Include governorate for EGP orders
+        governorate: currency === 'EGP' ? deliveryInfo.governorate : null,
+        customerLocation: {
+          latitude: deliveryInfo.latitude,
+          longitude: deliveryInfo.longitude
+        },
+        coupon: appliedCoupon ? {
+          code: appliedCoupon.code,
+          amount: appliedCoupon.amount,
+          id: appliedCoupon.id
+        } : null,
+        shipping: {
+          ...shippingDetails,
+          governorate: currency === 'EGP' ? deliveryInfo.governorate : undefined
+        },
+        source: 'web',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
       }
 
-      const paymentResult = await kashierApi.createPayment({
-        amount: finalPrice,
-        currency: currencyConfig.code,
-        customerEmail: deliveryInfo.email,
-        customerPhone: deliveryInfo.phone,
-        orderId: orderId,
-        description: `Order #${orderId} - Louable Chocolates (${currencyConfig.code})`
+      // Write to currency-specific collection
+      const currencyOrderRef = doc(collection(db, currencyConfig.orderCollection))
+      batch.set(currencyOrderRef, orderData)
+
+      // Write to unified mobile_orders collection
+      const mobileOrderRef = doc(db, 'mobile_orders', orderId)
+      batch.set(mobileOrderRef, {
+        ...orderData,
+        webOrderRef: currencyOrderRef.id,
+        platform: 'web',
+        isRead: false,
+        syncedToMobile: true
       })
 
-      if (paymentResult.success && paymentResult.checkoutUrl) {
-        sessionStorage.setItem('pendingOrderId', orderId)
-        sessionStorage.setItem('pendingFirestoreId', currencyOrderRef.id)
-        sessionStorage.setItem('pendingMobileOrderId', mobileOrderRef.id) // Store mobile ref too
-        sessionStorage.setItem('pendingCurrency', currencyConfig.code)
-        
-        window.location.href = paymentResult.checkoutUrl
-        return
-      } else {
-        throw new Error('Failed to create payment session')
+      // Update coupon usage
+      if (appliedCoupon) {
+        const couponRef = doc(db, 'egp_coupons', appliedCoupon.id)
+        batch.update(couponRef, {
+          usedCount: increment(1)
+        })
       }
+
+      await batch.commit()
+
+      // Cash on Delivery
+      clearCart()
+      clearDeliveryInfo()
+      navigate('/order-success', {
+        state: {
+          orderId,
+          txid: `TXN-${Date.now()}`,
+          totalPrice: finalPrice,
+          items,
+          deliveryInfo,
+          shipping: shippingDetails,
+          paymentMethod: 'cod',
+          currency: currencyConfig.code
+        }
+      })
+
+    } catch (error) {
+      console.error('Checkout error:', error)
+      alert(t('checkoutFailed') + ': ' + (error.message || t('tryAgain')))
+      setIsProcessing(false)
     }
-
-    // CASH ON DELIVERY
-    clearCart()
-    clearDeliveryInfo()
-    navigate('/order-success', {
-      state: {
-        orderId,
-        txid: `TXN-${Date.now()}`,
-        totalPrice: finalPrice,
-        items,
-        deliveryInfo,
-        shipping: shippingDetails,
-        paymentMethod: 'cod',
-        currency: currencyConfig.code
-      }
-    })
-
-  } catch (error) {
-    console.error('Checkout error:', error)
-    alert(t('checkoutFailed') + ': ' + (error.message || t('tryAgain')))
-    setIsProcessing(false)
-  }
-}, [
-  canCheckout, 
-  items, 
-  finalPrice, 
-  deliveryInfo, 
-  appliedCoupon, 
-  shippingDetails, 
-  paymentMethod, 
-  stockErrors,
-  t,
-  clearCart, 
-  clearDeliveryInfo, 
-  navigate,
-  currencyConfig
-])
+  }, [
+    canCheckout, 
+    items, 
+    finalPrice, 
+    deliveryInfo, 
+    appliedCoupon, 
+    shippingDetails, 
+    paymentMethod, 
+    stockErrors,
+    t,
+    clearCart, 
+    clearDeliveryInfo, 
+    navigate,
+    currencyConfig,
+    currency
+  ])
 
   const handleQuantityUpdate = useCallback(async (item, newQuantity) => {
     if (newQuantity < 1) {
@@ -715,13 +796,14 @@ const handleCheckout = useCallback(async () => {
   const c = colors[theme] || colors.light
 
   // ============ CURRENCY DISPLAY HELPER ============
-  // UPDATED: Format price with correct currency symbol
   const formatPrice = (price) => {
     if (currencyConfig.code === 'USD') {
       return `$${price.toFixed(2)}`
     }
     return `${price.toFixed(2)} EGP`
   }
+
+  // ... (MapEditorModal component remains the same, but I'll include the key parts)
 
   // ============ MAP EDITOR MODAL COMPONENT ============
   const MapEditorModal = () => {
@@ -741,7 +823,9 @@ const handleCheckout = useCallback(async () => {
         <div style={{
           padding: '1rem 1.5rem',
           background: c.card,
-          borderBottom: `2px solid ${c.border}`,
+          borderBottomWidth: '2px',
+          borderBottomStyle: 'solid',
+          borderBottomColor: c.border,
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
@@ -775,7 +859,9 @@ const handleCheckout = useCallback(async () => {
               width: '44px',
               height: '44px',
               borderRadius: '50%',
-              border: `2px solid ${c.border}`,
+              borderWidth: '2px',
+              borderStyle: 'solid',
+              borderColor: c.border,
               background: c.surface,
               color: c.textDark,
               fontSize: '1.5rem',
@@ -805,7 +891,9 @@ const handleCheckout = useCallback(async () => {
         <div style={{
           padding: '1rem 1.5rem',
           background: c.card,
-          borderBottom: `1px solid ${c.border}`,
+          borderBottomWidth: '1px',
+          borderBottomStyle: 'solid',
+          borderBottomColor: c.border,
           display: 'flex',
           gap: '12px',
           alignItems: 'flex-start',
@@ -823,7 +911,9 @@ const handleCheckout = useCallback(async () => {
               style={{
                 width: '100%',
                 padding: '12px 16px',
-                border: `2px solid ${c.border}`,
+                borderWidth: '2px',
+                borderStyle: 'solid',
+                borderColor: c.border,
                 borderRadius: '10px',
                 fontSize: '1rem',
                 background: c.surface,
@@ -838,7 +928,9 @@ const handleCheckout = useCallback(async () => {
                 left: 0,
                 right: 0,
                 background: c.surface,
-                border: `2px solid ${c.border}`,
+                borderWidth: '2px',
+                borderStyle: 'solid',
+                borderColor: c.border,
                 borderRadius: '10px',
                 marginTop: '8px',
                 maxHeight: '300px',
@@ -856,7 +948,9 @@ const handleCheckout = useCallback(async () => {
                       textAlign: 'left',
                       background: 'transparent',
                       border: 'none',
-                      borderBottom: `1px solid ${c.border}`,
+                      borderBottomWidth: '1px',
+                      borderBottomStyle: 'solid',
+                      borderBottomColor: c.border,
                       cursor: 'pointer',
                       color: c.textDark,
                       fontSize: '0.9rem',
@@ -899,7 +993,7 @@ const handleCheckout = useCallback(async () => {
           </button>
         </div>
 
-        {/* MAP CONTAINER - LEAFLET */}
+        {/* MAP CONTAINER */}
         <div style={{
           flex: 1,
           position: 'relative',
@@ -953,20 +1047,24 @@ const handleCheckout = useCallback(async () => {
             fontSize: '0.85rem',
             fontWeight: '700',
             color: c.textDark,
-            border: `2px solid ${c.border}`,
+            borderWidth: '2px',
+            borderStyle: 'solid',
+            borderColor: c.border,
             pointerEvents: 'none'
           }}>
             🖱️ Click map or drag marker to set location
           </div>
 
-          {/* INFO CARD (BOTTOM) */}
+          {/* INFO CARD */}
           <div style={{
             position: 'absolute',
             bottom: 0,
             left: 0,
             right: 0,
             background: c.card,
-            borderTop: `2px solid ${c.border}`,
+            borderTopWidth: '2px',
+            borderTopStyle: 'solid',
+            borderTopColor: c.border,
             padding: '1.5rem',
             boxShadow: `0 -4px 12px ${c.overlay}`,
             animation: 'slideUpMap 0.4s ease-out',
@@ -996,7 +1094,9 @@ const handleCheckout = useCallback(async () => {
                   padding: '10px 14px',
                   background: c.overlay,
                   borderRadius: '10px',
-                  border: `2px solid ${tempLocation ? c.success : c.border}`,
+                  borderWidth: '2px',
+                  borderStyle: 'solid',
+                  borderColor: tempLocation ? c.success : c.border,
                   fontSize: '0.95rem',
                   fontWeight: '700',
                   color: c.textDark,
@@ -1021,7 +1121,9 @@ const handleCheckout = useCallback(async () => {
                   padding: '10px 14px',
                   background: c.overlay,
                   borderRadius: '10px',
-                  border: `2px solid ${tempLocation ? c.success : c.border}`,
+                  borderWidth: '2px',
+                  borderStyle: 'solid',
+                  borderColor: tempLocation ? c.success : c.border,
                   fontSize: '0.95rem',
                   fontWeight: '700',
                   color: c.textDark,
@@ -1043,7 +1145,9 @@ const handleCheckout = useCallback(async () => {
                   flex: 1,
                   padding: '12px 20px',
                   background: c.card,
-                  border: `2px solid ${c.border}`,
+                  borderWidth: '2px',
+                  borderStyle: 'solid',
+                  borderColor: c.border,
                   borderRadius: '12px',
                   color: c.textDark,
                   fontWeight: '800',
@@ -1124,7 +1228,8 @@ const handleCheckout = useCallback(async () => {
     )
   }
 
-  // ============ RENDER HELPERS ============
+  // ... (CartErrorBanner and rest of render helpers)
+
   const CartErrorBanner = () => {
     if (!cartError && Object.keys(stockErrors).length === 0) return null
 
@@ -1132,7 +1237,9 @@ const handleCheckout = useCallback(async () => {
       <div style={{
         padding: '16px 20px',
         background: theme === 'light' ? '#FEF2F0' : '#4A2B24',
-        border: `2px solid ${c.danger}`,
+        borderWidth: '2px',
+        borderStyle: 'solid',
+        borderColor: c.danger,
         borderRadius: '16px',
         marginBottom: '2rem',
         color: c.danger,
@@ -1220,7 +1327,6 @@ const handleCheckout = useCallback(async () => {
         }}>
           Browse our collection and add some delicious items!
         </p>
-        {/* UPDATED: Show currency badge in empty cart */}
         <div style={{
           display: 'inline-flex',
           alignItems: 'center',
@@ -1228,7 +1334,9 @@ const handleCheckout = useCallback(async () => {
           padding: '10px 20px',
           background: c.card,
           borderRadius: '20px',
-          border: `2px solid ${c.border}`,
+          borderWidth: '2px',
+          borderStyle: 'solid',
+          borderColor: c.border,
           marginBottom: '1.5rem',
           fontSize: '0.9rem',
           color: c.textMuted
@@ -1257,7 +1365,7 @@ const handleCheckout = useCallback(async () => {
           }}
           onMouseLeave={(e) => {
             e.target.style.transform = 'translateY(0) scale(1)'
-            e.target.style.boxShadow = '0 8px 24px rgba(212, 160, 23, 0.25)'
+            e.target.style.boxShadow = `0 8px 24px rgba(212, 160, 23, 0.25)`
           }}
         >
           🛍️ Continue Shopping
@@ -1286,7 +1394,9 @@ const handleCheckout = useCallback(async () => {
             style={{
               padding: '12px 24px',
               background: c.card,
-              border: `2px solid ${c.border}`,
+              borderWidth: '2px',
+              borderStyle: 'solid',
+              borderColor: c.border,
               borderRadius: '12px',
               cursor: 'pointer',
               fontWeight: '700',
@@ -1311,7 +1421,6 @@ const handleCheckout = useCallback(async () => {
           </button>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            {/* UPDATED: Currency Badge in Header */}
             <div style={{
               display: 'flex',
               alignItems: 'center',
@@ -1319,7 +1428,9 @@ const handleCheckout = useCallback(async () => {
               padding: '8px 16px',
               background: c.card,
               borderRadius: '20px',
-              border: `2px solid ${c.secondary}`,
+              borderWidth: '2px',
+              borderStyle: 'solid',
+              borderColor: c.secondary,
               fontSize: '0.85rem',
               fontWeight: '700',
               color: c.secondary
@@ -1345,7 +1456,9 @@ const handleCheckout = useCallback(async () => {
                 color: c.secondary,
                 padding: '8px 16px',
                 borderRadius: '24px',
-                border: `2px solid ${c.secondary}`,
+                borderWidth: '2px',
+                borderStyle: 'solid',
+                borderColor: c.secondary,
                 minWidth: '50px',
                 textAlign: 'center',
                 animation: 'badgePulse 2s ease-in-out infinite'
@@ -1385,7 +1498,9 @@ const handleCheckout = useCallback(async () => {
                     background: c.card,
                     borderRadius: '16px',
                     marginBottom: '1.5rem',
-                    border: `2px solid ${stockError ? c.danger : isOutOfStock ? c.danger : c.border}`,
+                    borderWidth: '2px',
+                    borderStyle: 'solid',
+                    borderColor: stockError ? c.danger : isOutOfStock ? c.danger : c.border,
                     display: 'grid',
                     gridTemplateColumns: isSmallMobile ? '1fr' : '130px 1fr',
                     gap: '1.5rem',
@@ -1406,7 +1521,9 @@ const handleCheckout = useCallback(async () => {
                       borderRadius: '12px',
                       overflow: 'hidden',
                       cursor: 'pointer',
-                      border: `2px solid ${c.border}`,
+                      borderWidth: '2px',
+                      borderStyle: 'solid',
+                      borderColor: c.border,
                       transition: 'transform 0.4s cubic-bezier(0.23, 1, 0.320, 1)',
                       flexShrink: 0
                     }}
@@ -1507,7 +1624,6 @@ const handleCheckout = useCallback(async () => {
                         </button>
                       </div>
 
-                      {/* UPDATED: Price with dynamic currency formatting */}
                       <div style={{
                         color: c.secondary,
                         fontSize: '1.4rem',
@@ -1517,7 +1633,6 @@ const handleCheckout = useCallback(async () => {
                         {formatPrice(item.price * item.quantity)}
                       </div>
 
-                      {/* UPDATED: Unit price with dynamic currency */}
                       <div style={{
                         color: c.textMuted,
                         fontSize: '0.85rem',
@@ -1526,7 +1641,6 @@ const handleCheckout = useCallback(async () => {
                         @ {formatPrice(item.price)} each
                       </div>
 
-                      {/* STOCK STATUS */}
                       <div style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -1544,12 +1658,13 @@ const handleCheckout = useCallback(async () => {
                         )}
                       </div>
 
-                      {/* ERRORS */}
                       {stockError && (
                         <div style={{
                           padding: '10px 14px',
                           background: `${c.danger}20`,
-                          borderLeft: `4px solid ${c.danger}`,
+                          borderLeftWidth: '4px',
+                          borderLeftStyle: 'solid',
+                          borderLeftColor: c.danger,
                           borderRadius: '8px',
                           color: c.danger,
                           fontSize: '0.8rem',
@@ -1561,7 +1676,6 @@ const handleCheckout = useCallback(async () => {
                         </div>
                       )}
 
-                      {/* FLAVORS */}
                       {product?.flavors && product.flavors.length > 0 && (
                         <div style={{ marginBottom: '1rem' }}>
                           <button
@@ -1606,7 +1720,9 @@ const handleCheckout = useCallback(async () => {
                                     color: c.textDark,
                                     fontSize: '0.8rem',
                                     fontWeight: '700',
-                                    border: `1px solid ${c.border}`,
+                                    borderWidth: '1px',
+                                    borderStyle: 'solid',
+                                    borderColor: c.border,
                                     animation: `fadeInScale 0.4s ease-out ${i * 0.08}s backwards`
                                   }}
                                 >
@@ -1637,7 +1753,9 @@ const handleCheckout = useCallback(async () => {
                         background: c.overlay,
                         padding: '6px',
                         borderRadius: '10px',
-                        border: `2px solid ${c.border}`,
+                        borderWidth: '2px',
+                        borderStyle: 'solid',
+                        borderColor: c.border,
                         transition: 'all 0.3s ease'
                       }}>
                         <button
@@ -1723,7 +1841,9 @@ const handleCheckout = useCallback(async () => {
                 background: c.card,
                 padding: isMobile ? '1.5rem' : '1.75rem',
                 borderRadius: '16px',
-                border: `2px solid ${c.secondary}40`,
+                borderWidth: '2px',
+                borderStyle: 'solid',
+                borderColor: c.secondary + '40',
                 boxShadow: `0 8px 24px ${c.overlay}`,
                 animation: 'slideInRight 0.6s ease-out'
               }}>
@@ -1737,7 +1857,6 @@ const handleCheckout = useCallback(async () => {
                   gap: '8px'
                 }}>
                   📍 Delivery Info
-                  {/* UPDATED: Show currency context */}
                   <span style={{
                     marginLeft: 'auto',
                     fontSize: '0.7rem',
@@ -1772,7 +1891,9 @@ const handleCheckout = useCallback(async () => {
                       style={{
                         width: '100%',
                         padding: '12px 16px',
-                        border: `2px solid ${formErrors.name ? c.danger : c.border}`,
+                        borderWidth: '2px',
+                        borderStyle: 'solid',
+                        borderColor: formErrors.name ? c.danger : c.border,
                         borderRadius: '12px',
                         fontSize: '1rem',
                         background: c.surface,
@@ -1810,7 +1931,9 @@ const handleCheckout = useCallback(async () => {
                       style={{
                         width: '100%',
                         padding: '12px 16px',
-                        border: `2px solid ${formErrors.phone ? c.danger : c.border}`,
+                        borderWidth: '2px',
+                        borderStyle: 'solid',
+                        borderColor: formErrors.phone ? c.danger : c.border,
                         borderRadius: '12px',
                         fontSize: '1rem',
                         background: c.surface,
@@ -1848,7 +1971,9 @@ const handleCheckout = useCallback(async () => {
                       style={{
                         width: '100%',
                         padding: '12px 16px',
-                        border: `2px solid ${formErrors.email ? c.danger : c.border}`,
+                        borderWidth: '2px',
+                        borderStyle: 'solid',
+                        borderColor: formErrors.email ? c.danger : c.border,
                         borderRadius: '12px',
                         fontSize: '1rem',
                         background: c.surface,
@@ -1863,6 +1988,69 @@ const handleCheckout = useCallback(async () => {
                     />
                     {formErrors.email && <div style={{ color: c.danger, fontSize: '0.75rem', marginTop: '4px' }}>✕ {formErrors.email}</div>}
                   </div>
+
+                  {/* FIXED: GOVERNORATE SELECT FOR EGP */}
+                  {currency === 'EGP' && (
+                    <div>
+                      <label style={{
+                        display: 'block',
+                        marginBottom: '0.5rem',
+                        fontSize: '0.9rem',
+                        fontWeight: '700',
+                        color: c.textDark,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                      }}>
+                        Governorate <span style={{ color: c.danger }}>*</span>
+                      </label>
+                      <select
+                        name="governorate"
+                        value={formData.governorate}
+                        onChange={handleGovernorateChange}
+                        disabled={loadingGovernorates}
+                        style={{
+                          width: '100%',
+                          padding: '12px 16px',
+                          borderWidth: '2px',
+                          borderStyle: 'solid',
+                          borderColor: formErrors.governorate ? c.danger : c.border,
+                          borderRadius: '12px',
+                          fontSize: '1rem',
+                          background: c.surface,
+                          color: c.textDark,
+                          fontFamily: 'inherit',
+                          cursor: loadingGovernorates ? 'not-allowed' : 'pointer',
+                          transition: 'all 0.3s ease'
+                        }}
+                        onFocus={(e) => {
+                          if (!formErrors.governorate) e.target.style.borderColor = c.secondary
+                        }}
+                        onBlur={(e) => (e.target.style.borderColor = formErrors.governorate ? c.danger : c.border)}
+                      >
+                        <option value="">
+                          {loadingGovernorates ? 'Loading...' : 'Select your governorate'}
+                        </option>
+                        {EGYPT_GOVERNORATES.map((gov) => (
+                          <option key={gov.id} value={gov.id}>
+                            {gov.name} - {gov.nameAr} ({currencyConfig.symbol} {governorateCosts[gov.id] || '--'})
+                          </option>
+                        ))}
+                      </select>
+                      {formErrors.governorate && (
+                        <div style={{ color: c.danger, fontSize: '0.75rem', marginTop: '4px' }}>
+                          ✕ {formErrors.governorate}
+                        </div>
+                      )}
+                      <div style={{ 
+                        fontSize: '0.75rem', 
+                        color: c.textMuted, 
+                        marginTop: '6px',
+                        fontStyle: 'italic'
+                      }}>
+                        Shipping cost varies by governorate
+                      </div>
+                    </div>
+                  )}
 
                   {/* ADDRESS */}
                   <div>
@@ -1886,7 +2074,9 @@ const handleCheckout = useCallback(async () => {
                       style={{
                         width: '100%',
                         padding: '12px 16px',
-                        border: `2px solid ${formErrors.address ? c.danger : c.border}`,
+                        borderWidth: '2px',
+                        borderStyle: 'solid',
+                        borderColor: formErrors.address ? c.danger : c.border,
                         borderRadius: '12px',
                         fontSize: '1rem',
                         background: c.surface,
@@ -1903,7 +2093,7 @@ const handleCheckout = useCallback(async () => {
                     {formErrors.address && <div style={{ color: c.danger, fontSize: '0.75rem', marginTop: '4px' }}>✕ {formErrors.address}</div>}
                   </div>
 
-                  {/* CITY */}
+                  {/* CITY - Optional for EGP since we have governorate */}
                   <div>
                     <label style={{
                       display: 'block',
@@ -1914,17 +2104,19 @@ const handleCheckout = useCallback(async () => {
                       textTransform: 'uppercase',
                       letterSpacing: '0.5px'
                     }}>
-                      City <span style={{ color: c.danger }}>*</span>
+                      City/Area {currency !== 'EGP' && <span style={{ color: c.danger }}>*</span>}
                     </label>
                     <input
                       name="city"
                       value={formData.city}
                       onChange={handleInputChange}
-                      placeholder={currency === 'USD' ? "Enter city (e.g., New York, London)" : "Enter city (e.g., Cairo, Alexandria)"}
+                      placeholder={currency === 'USD' ? "Enter city (e.g., New York, London)" : "Enter city or area (e.g., Nasr City, Mohandessin)"}
                       style={{
                         width: '100%',
                         padding: '12px 16px',
-                        border: `2px solid ${formErrors.city ? c.danger : c.border}`,
+                        borderWidth: '2px',
+                        borderStyle: 'solid',
+                        borderColor: formErrors.city ? c.danger : c.border,
                         borderRadius: '12px',
                         fontSize: '1rem',
                         background: c.surface,
@@ -1940,7 +2132,7 @@ const handleCheckout = useCallback(async () => {
                     {formErrors.city && <div style={{ color: c.danger, fontSize: '0.75rem', marginTop: '4px' }}>✕ {formErrors.city}</div>}
                   </div>
 
-                  {/* MAP - EMBEDDED WITH EDIT BUTTON */}
+                  {/* MAP */}
                   <div>
                     <label style={{
                       display: 'flex',
@@ -1989,7 +2181,9 @@ const handleCheckout = useCallback(async () => {
                         background: `${c.warning}20`,
                         color: c.warning,
                         fontSize: '0.8rem',
-                        borderLeft: `4px solid ${c.warning}`,
+                        borderLeftWidth: '4px',
+                        borderLeftStyle: 'solid',
+                        borderLeftColor: c.warning,
                         borderRadius: '6px',
                         marginBottom: '0.5rem',
                         fontWeight: '700'
@@ -2000,7 +2194,9 @@ const handleCheckout = useCallback(async () => {
 
                     <div style={{
                       height: '250px',
-                      border: `2px solid ${formErrors.location ? c.danger : c.border}`,
+                      borderWidth: '2px',
+                      borderStyle: 'solid',
+                      borderColor: formErrors.location ? c.danger : c.border,
                       borderRadius: '12px',
                       overflow: 'hidden',
                       background: c.overlay
@@ -2067,7 +2263,9 @@ const handleCheckout = useCallback(async () => {
             {hasDeliveryInfo && !showDeliveryForm && (
               <div style={{
                 background: `linear-gradient(135deg, ${c.success}15, ${c.success}05)`,
-                border: `2px solid ${c.success}40`,
+                borderWidth: '2px',
+                borderStyle: 'solid',
+                borderColor: c.success + '40',
                 padding: '1.5rem',
                 borderRadius: '14px',
                 boxShadow: `0 4px 12px ${c.overlay}`,
@@ -2126,6 +2324,12 @@ const handleCheckout = useCallback(async () => {
                   <div><strong>{deliveryInfo.name}</strong></div>
                   <div>{deliveryInfo.phone}</div>
                   <div>{deliveryInfo.email}</div>
+                  {/* FIXED: Show governorate for EGP */}
+                  {currency === 'EGP' && deliveryInfo.governorate && (
+                    <div style={{ color: c.secondary, fontWeight: '700' }}>
+                      📍 {EGYPT_GOVERNORATES.find(g => g.id === deliveryInfo.governorate)?.name || deliveryInfo.governorate}
+                    </div>
+                  )}
                   <div style={{ wordBreak: 'break-word' }}>{deliveryInfo.address}</div>
                 </div>
               </div>
@@ -2136,24 +2340,29 @@ const handleCheckout = useCallback(async () => {
               background: c.card,
               padding: '1.5rem',
               borderRadius: '14px',
-              border: `2px solid ${c.border}`,
+              borderWidth: '2px',
+              borderStyle: 'solid',
+              borderColor: couponError ? c.danger : c.border,
               boxShadow: `0 4px 12px ${c.overlay}`,
               animation: 'slideInRight 0.7s ease-out'
             }}>
               <h4 style={{ margin: '0 0 1rem 0', color: c.textDark, fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 🎟️ Coupon
               </h4>
-              <div style={{ display: 'flex', gap: '8px', marginBottom: appliedCoupon ? '1rem' : 0 }}>
+              
+              <div style={{ display: 'flex', gap: '8px', marginBottom: appliedCoupon || couponError ? '1rem' : 0 }}>
                 <input
                   type="text"
                   value={couponInput}
                   onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
                   placeholder="Enter coupon code"
-                  disabled={appliedCoupon}
+                  disabled={appliedCoupon || couponLoading}
                   style={{
                     flex: 1,
                     padding: '10px 14px',
-                    border: `2px solid ${c.border}`,
+                    borderWidth: '2px',
+                    borderStyle: 'solid',
+                    borderColor: couponError ? c.danger : c.border,
                     borderRadius: '10px',
                     background: c.surface,
                     color: c.textDark,
@@ -2163,43 +2372,58 @@ const handleCheckout = useCallback(async () => {
                     fontFamily: 'inherit',
                     transition: 'all 0.3s ease'
                   }}
-                  onFocus={(e) => !appliedCoupon && (e.target.style.borderColor = c.secondary)}
-                  onBlur={(e) => (e.target.style.borderColor = c.border)}
+                  onFocus={(e) => !appliedCoupon && !couponLoading && (e.target.style.borderColor = c.secondary)}
+                  onBlur={(e) => (e.target.style.borderColor = couponError ? c.danger : c.border)}
                 />
                 <button
                   onClick={handleApplyCoupon}
-                  disabled={appliedCoupon || !couponInput.trim()}
+                  disabled={appliedCoupon || couponLoading || !couponInput.trim()}
                   style={{
                     padding: '10px 16px',
-                    background: appliedCoupon || !couponInput.trim() ? c.textMuted : c.secondary,
+                    background: appliedCoupon || couponLoading || !couponInput.trim() ? c.textMuted : c.secondary,
                     color: 'white',
                     border: 'none',
                     borderRadius: '10px',
                     fontWeight: '800',
-                    cursor: appliedCoupon || !couponInput.trim() ? 'not-allowed' : 'pointer',
+                    cursor: appliedCoupon || couponLoading || !couponInput.trim() ? 'not-allowed' : 'pointer',
                     fontSize: '0.85rem',
                     textTransform: 'uppercase',
                     letterSpacing: '0.5px',
                     whiteSpace: 'nowrap',
-                    transition: 'all 0.3s ease'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!appliedCoupon && couponInput.trim()) {
-                      e.target.style.transform = 'translateY(-2px) scale(1.08)'
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    e.target.style.transform = 'translateY(0) scale(1)'
+                    transition: 'all 0.3s ease',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
                   }}
                 >
-                  Apply
+                  {couponLoading ? '⟳' : 'Apply'}
                 </button>
               </div>
+              
+              {couponError && (
+                <div style={{
+                  padding: '10px 14px',
+                  background: `${c.danger}20`,
+                  borderLeftWidth: '4px',
+                  borderLeftStyle: 'solid',
+                  borderLeftColor: c.danger,
+                  borderRadius: '8px',
+                  color: c.danger,
+                  fontSize: '0.85rem',
+                  fontWeight: '700',
+                  animation: 'slideDown 0.4s ease-out'
+                }}>
+                  ⚠️ {couponError}
+                </div>
+              )}
+              
               {appliedCoupon && (
                 <div style={{
                   padding: '12px 14px',
                   background: `${c.success}20`,
-                  borderLeft: `4px solid ${c.success}`,
+                  borderLeftWidth: '4px',
+                  borderLeftStyle: 'solid',
+                  borderLeftColor: c.success,
                   borderRadius: '8px',
                   color: c.success,
                   fontSize: '0.9rem',
@@ -2211,7 +2435,10 @@ const handleCheckout = useCallback(async () => {
                 }}>
                   <span>✅ {appliedCoupon.label}</span>
                   <button
-                    onClick={() => setAppliedCoupon(null)}
+                    onClick={() => {
+                      setAppliedCoupon(null)
+                      setCouponError(null)
+                    }}
                     style={{
                       background: 'none',
                       border: 'none',
@@ -2221,8 +2448,6 @@ const handleCheckout = useCallback(async () => {
                       fontSize: '1rem',
                       transition: 'transform 0.2s ease'
                     }}
-                    onMouseEnter={(e) => e.target.style.transform = 'scale(1.3)'}
-                    onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
                   >
                     ✕
                   </button>
@@ -2235,7 +2460,9 @@ const handleCheckout = useCallback(async () => {
               background: c.card,
               padding: '1.5rem',
               borderRadius: '14px',
-              border: `2px solid ${c.border}`,
+              borderWidth: '2px',
+              borderStyle: 'solid',
+              borderColor: c.border,
               boxShadow: `0 4px 12px ${c.overlay}`,
               animation: 'slideInRight 0.75s ease-out'
             }}>
@@ -2251,7 +2478,7 @@ const handleCheckout = useCallback(async () => {
               </h4>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {/* Cash on Delivery - Only show for EGP (Egypt) */}
+                {/* Cash on Delivery - Only for EGP */}
                 {currency === 'EGP' && (
                   <label style={{
                     display: 'flex',
@@ -2259,7 +2486,9 @@ const handleCheckout = useCallback(async () => {
                     gap: '12px',
                     padding: '14px',
                     background: paymentMethod === 'cod' ? `${c.success}15` : c.overlay,
-                    border: `2px solid ${paymentMethod === 'cod' ? c.success : c.border}`,
+                    borderWidth: '2px',
+                    borderStyle: 'solid',
+                    borderColor: paymentMethod === 'cod' ? c.success : c.border,
                     borderRadius: '12px',
                     cursor: 'pointer',
                     transition: 'all 0.3s ease'
@@ -2281,35 +2510,37 @@ const handleCheckout = useCallback(async () => {
                 )}
 
                 {/* Credit/Debit Card - DISABLED */}
-<label style={{
-  display: 'flex',
-  alignItems: 'center',
-  gap: '12px',
-  padding: '14px',
-  background: c.overlay,
-  border: `2px solid ${c.border}`,
-  borderRadius: '12px',
-  cursor: 'not-allowed',
-  transition: 'all 0.3s ease',
-  opacity: 0.5
-}}>
-  <input
-    type="radio"
-    name="payment"
-    value="card"
-    checked={false}
-    disabled={true}
-    onChange={() => {}}
-    style={{ width: '20px', height: '20px', accentColor: c.secondary }}
-  />
-  <div style={{ flex: 1 }}>
-    <div style={{ fontWeight: '800', color: c.textMuted }}>Credit/Debit Card</div>
-    <div style={{ fontSize: '0.8rem', color: c.textMuted }}>
-      Temporarily unavailable
-    </div>
-  </div>
-  <span style={{ fontSize: '1.5rem', opacity: 0.5 }}>💳</span>
-</label>
+                <label style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: '14px',
+                  background: c.overlay,
+                  borderWidth: '2px',
+                  borderStyle: 'solid',
+                  borderColor: c.border,
+                  borderRadius: '12px',
+                  cursor: 'not-allowed',
+                  transition: 'all 0.3s ease',
+                  opacity: 0.5
+                }}>
+                  <input
+                    type="radio"
+                    name="payment"
+                    value="card"
+                    checked={false}
+                    disabled={true}
+                    onChange={() => {}}
+                    style={{ width: '20px', height: '20px', accentColor: c.secondary }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: '800', color: c.textMuted }}>Credit/Debit Card</div>
+                    <div style={{ fontSize: '0.8rem', color: c.textMuted }}>
+                      Temporarily unavailable
+                    </div>
+                  </div>
+                  <span style={{ fontSize: '1.5rem', opacity: 0.5 }}>💳</span>
+                </label>
               </div>
             </div>
 
@@ -2318,7 +2549,9 @@ const handleCheckout = useCallback(async () => {
               background: c.card,
               padding: '1.5rem',
               borderRadius: '14px',
-              border: `2px solid ${c.secondary}40`,
+              borderWidth: '2px',
+              borderStyle: 'solid',
+              borderColor: c.secondary + '40',
               boxShadow: `0 8px 24px ${c.overlay}`,
               animation: 'slideInRight 0.8s ease-out'
             }}>
@@ -2331,11 +2564,12 @@ const handleCheckout = useCallback(async () => {
                 gap: '0.75rem',
                 marginBottom: '1.25rem',
                 paddingBottom: '1.25rem',
-                borderBottom: `2px solid ${c.border}`
+                borderBottomWidth: '2px',
+                borderBottomStyle: 'solid',
+                borderBottomColor: c.border
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: c.textMuted, fontSize: '0.9rem', fontWeight: '600' }}>
                   <span>Subtotal</span>
-                  {/* UPDATED: Use formatPrice helper */}
                   <span>{formatPrice(totalPrice)}</span>
                 </div>
                 {discountAmount > 0 && (
@@ -2357,19 +2591,20 @@ const handleCheckout = useCallback(async () => {
                     }
                   </span>
                 </div>
-                {deliveryInfo?.latitude && !shippingDetails.isFree && (
+                {/* FIXED: Show governorate in shipping summary for EGP */}
+                {currency === 'EGP' && deliveryInfo?.governorate && (
                   <div style={{ 
                     fontSize: '0.75rem', 
                     color: c.textMuted, 
                     textAlign: 'right',
                     marginTop: '-4px'
                   }}>
-                    📍 {shippingDetails.zone} Zone
+                    📍 {EGYPT_GOVERNORATES.find(g => g.id === deliveryInfo.governorate)?.name || deliveryInfo.governorate}
                   </div>
                 )}
               </div>
               
-              {/* Free Shipping Progress Bar */}
+              {/* Free Shipping Progress */}
               {!shippingDetails.isFree && (
                 <div style={{
                   marginBottom: '1.25rem',
@@ -2379,7 +2614,7 @@ const handleCheckout = useCallback(async () => {
                   overflow: 'hidden'
                 }}>
                   <div style={{
-                    width: `${Math.min((totalPrice / FREE_SHIPPING_THRESHOLD) * 100, 100)}%`,
+                    width: `${Math.min((totalPrice / currencyConfig.freeShippingThreshold) * 100, 100)}%`,
                     background: c.secondary,
                     height: '100%',
                     transition: 'width 0.5s cubic-bezier(0.23, 1, 0.320, 1)'
@@ -2394,8 +2629,7 @@ const handleCheckout = useCallback(async () => {
                   marginBottom: '1.25rem',
                   animation: 'fadeInUp 0.6s ease-out'
                 }}>
-                  {/* UPDATED: Dynamic free shipping threshold */}
-                  Add {formatPrice(FREE_SHIPPING_THRESHOLD - totalPrice)} more for free shipping!
+                  Add {formatPrice(currencyConfig.freeShippingThreshold - totalPrice)} more for free shipping!
                 </p>
               )}
 
@@ -2410,7 +2644,6 @@ const handleCheckout = useCallback(async () => {
                 letterSpacing: '0.5px'
               }}>
                 <span>Total:</span>
-                {/* UPDATED: Use formatPrice helper */}
                 <span style={{ color: c.secondary }}>{formatPrice(finalPrice)}</span>
               </div>
 
@@ -2464,9 +2697,11 @@ const handleCheckout = useCallback(async () => {
                   background: `${c.danger}15`,
                   padding: '10px',
                   borderRadius: '8px',
-                  borderLeft: `4px solid ${c.danger}`
+                  borderLeftWidth: '4px',
+                  borderLeftStyle: 'solid',
+                  borderLeftColor: c.danger
                 }}>
-                  {!hasDeliveryInfo ? 'Complete delivery info (including email)' : 'Adjust quantities before checkout'}
+                  {!hasDeliveryInfo ? 'Complete delivery info (including governorate)' : 'Adjust quantities before checkout'}
                 </p>
               )}
             </div>
