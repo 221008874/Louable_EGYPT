@@ -185,7 +185,6 @@ useEffect(() => {
     // Pre-fill the input field
     if (prefillCode) {
       setCouponInput(prefillCode)
-      // Clear prefill so it doesn't persist on page refresh
       sessionStorage.removeItem('prefillCouponCode')
     }
 
@@ -198,19 +197,23 @@ useEffect(() => {
         const couponsRef = collection(db, 'egp_coupons')
         const q = query(couponsRef, where('code', '==', couponData.code), where('isActive', '==', true))
         const snapshot = await getDocs(q)
+        
+        // FIX: Define 'now' BEFORE using it!
+        const now = new Date()  // ← MOVE THIS LINE UP HERE
+        
         // Check expiration from stored data
-const storedExpiresAt = couponData.expiresAt ? new Date(couponData.expiresAt) : null
-if (storedExpiresAt && storedExpiresAt < now) {
-  console.log('Scanned coupon expired:', couponData.code)
-  sessionStorage.removeItem('autoApplyCoupon')
-  return
-}
+        const storedExpiresAt = couponData.expiresAt ? new Date(couponData.expiresAt) : null
+        if (storedExpiresAt && storedExpiresAt < now) {  // ← Now 'now' is defined!
+          console.log('Scanned coupon expired:', couponData.code)
+          sessionStorage.removeItem('autoApplyCoupon')
+          return
+        }
+        
         if (!snapshot.empty) {
           const couponDoc = snapshot.docs[0]
           const couponInfo = couponDoc.data()
           
-          // Check expiration
-          const now = new Date()
+          // Check expiration from Firestore
           const expiresAt = couponInfo.expiresAt?.toDate?.() || new Date(couponInfo.expiresAt)
           
           if (expiresAt > now && couponInfo.usedCount < couponInfo.maxUses) {
