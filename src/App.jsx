@@ -11,6 +11,7 @@ import TermsOfService from './pages/TermsOfService'
 import OrderSuccess from './pages/OrderSuccess'      // ← MAKE SURE THIS IS IMPORTED
 import PaymentSuccess from './pages/PaymentSuccess'
 import PaymentCancel from './pages/PaymentCancel'
+import CouponLanding from './pages/CouponLanding'
 
 function App() {
   return (
@@ -29,6 +30,8 @@ function App() {
         <Route path="/order-success" element={<OrderSuccess />} />      // ← COD orders
         <Route path="/payment/success" element={<PaymentSuccess />} /> // ← Card payments
         <Route path="/payment/cancel" element={<PaymentCancel />} />
+        <Route path="/coupon/:code" element={<CouponLanding />} />
+
       </Routes>
     </LocationProvider>
   )

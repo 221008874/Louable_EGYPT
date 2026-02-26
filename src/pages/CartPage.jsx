@@ -139,7 +139,9 @@ export default function CartPage() {
   const mapRef = useRef(null)
   const mapContainerRef = useRef(null)
   const markerRef = useRef(null)
-
+// ============ MINIMUM ORDER AMOUNT STATE ============
+const [minimumOrderAmount, setMinimumOrderAmount] = useState(0)
+const [loadingMinOrder, setLoadingMinOrder] = useState(false)
   // ============ FIXED: Governorate-based shipping states ============
   const [governorateCosts, setGovernorateCosts] = useState({})
   const [selectedGovernorate, setSelectedGovernorate] = useState(deliveryInfo?.governorate || '')
@@ -170,7 +172,72 @@ export default function CartPage() {
 
   const isMobile = windowWidth < 768
   const isSmallMobile = windowWidth < 480
+// ============ HANDLE SCANNED COUPON FROM QR ============
+// ============ HANDLE SCANNED COUPON FROM QR ============
+useEffect(() => {
+  const handleScannedCoupon = async () => {
+    const prefillCode = sessionStorage.getItem('prefillCouponCode')
+    const autoApplyData = sessionStorage.getItem('autoApplyCoupon')
+    
+    if (!prefillCode && !autoApplyData) return
 
+    // Pre-fill the input field
+    if (prefillCode) {
+      setCouponInput(prefillCode)
+      // Clear prefill so it doesn't persist on page refresh
+      sessionStorage.removeItem('prefillCouponCode')
+    }
+
+    // Auto-apply if valid
+    if (autoApplyData) {
+      try {
+        const couponData = JSON.parse(autoApplyData)
+        
+        // Validate the coupon is still valid
+        const couponsRef = collection(db, 'egp_coupons')
+        const q = query(couponsRef, where('code', '==', couponData.code), where('isActive', '==', true))
+        const snapshot = await getDocs(q)
+        // Check expiration from stored data
+const storedExpiresAt = couponData.expiresAt ? new Date(couponData.expiresAt) : null
+if (storedExpiresAt && storedExpiresAt < now) {
+  console.log('Scanned coupon expired:', couponData.code)
+  sessionStorage.removeItem('autoApplyCoupon')
+  return
+}
+        if (!snapshot.empty) {
+          const couponDoc = snapshot.docs[0]
+          const couponInfo = couponDoc.data()
+          
+          // Check expiration
+          const now = new Date()
+          const expiresAt = couponInfo.expiresAt?.toDate?.() || new Date(couponInfo.expiresAt)
+          
+          if (expiresAt > now && couponInfo.usedCount < couponInfo.maxUses) {
+            // Auto-apply the coupon
+            setAppliedCoupon({
+              id: couponDoc.id,
+              code: couponInfo.code,
+              amount: couponInfo.amount,
+              label: `${currencyConfig.symbol} ${couponInfo.amount} off`
+            })
+            
+            // Mark as applied in session to prevent re-scan abuse
+            sessionStorage.setItem(`coupon_${couponData.code}_used`, 'true')
+            
+            console.log('Scanned coupon auto-applied:', couponData.code)
+          }
+        }
+        
+        // Clear auto-apply data
+        sessionStorage.removeItem('autoApplyCoupon')
+      } catch (error) {
+        console.error('Error auto-applying scanned coupon:', error)
+      }
+    }
+  }
+
+  handleScannedCoupon()
+}, [currencyConfig.symbol])
   // ============ FIXED: Load governorate costs from Firestore ============
   useEffect(() => {
     const loadGovernorateCosts = async () => {
@@ -289,7 +356,27 @@ export default function CartPage() {
       { enableHighAccuracy: true, timeout: 10000 }
     )
   }, [currency])
+// ============ FIXED: Load minimum order amount from Firestore ============
+useEffect(() => {
+  const loadMinimumOrderAmount = async () => {
+    if (currency !== 'EGP') return // Only for Egypt
+    
+    setLoadingMinOrder(true)
+    try {
+      const settingsRef = doc(db, 'egp_settings', 'general')
+      const settingsSnap = await getDoc(settingsRef)
+      const minAmount = settingsSnap.exists() ? settingsSnap.data().minimumOrderAmount || 0 : 0
+      setMinimumOrderAmount(minAmount)
+    } catch (error) {
+      console.error('Error loading minimum order amount:', error)
+      setMinimumOrderAmount(0) // Default fallback
+    } finally {
+      setLoadingMinOrder(false)
+    }
+  }
 
+  loadMinimumOrderAmount()
+}, [currency])
   // ============ PRODUCT DETAILS FETCH ============
   useEffect(() => {
     const fetchProductDetails = async () => {
@@ -344,8 +431,12 @@ export default function CartPage() {
   }, [deliveryInfo, currency])
 
   const canCheckout = useMemo(() => {
-    return Object.keys(stockErrors).length === 0 && hasDeliveryInfo && !isProcessing
-  }, [stockErrors, hasDeliveryInfo, isProcessing])
+  // Check minimum order amount for EGP
+  if (currency === 'EGP' && minimumOrderAmount > 0 && totalPrice < minimumOrderAmount) {
+    return false
+  }
+  return Object.keys(stockErrors).length === 0 && hasDeliveryInfo && !isProcessing
+}, [stockErrors, hasDeliveryInfo, isProcessing, currency, minimumOrderAmount, totalPrice])
 
   // ============ FORM HANDLERS ============
   const handleInputChange = (e) => {
@@ -451,50 +542,61 @@ export default function CartPage() {
     }
   }
 
-  // ============ LEAFLET MAP INITIALIZATION ============
-  useEffect(() => {
-    if (showMapEditor && mapContainerRef.current && !mapRef.current) {
-      const initialCenter = mapEditorCenter || (currency === 'USD' 
-        ? { lat: 40.7128, lng: -74.0060 }
-        : { lat: 30.0444, lng: 31.2357 })
-      
-      mapRef.current = L.map(mapContainerRef.current).setView(
-        [initialCenter.lat, initialCenter.lng],
-        15
-      )
-
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors',
-        maxZoom: 19
-      }).addTo(mapRef.current)
-
-      markerRef.current = L.marker([initialCenter.lat, initialCenter.lng], {
-        draggable: true,
-        title: 'Drag to set your location'
-      }).addTo(mapRef.current)
-
-      markerRef.current.on('dragend', (e) => {
-        const { lat, lng } = e.target.getLatLng()
-        setTempLocation({ lat, lng })
-      })
-
-      mapRef.current.on('click', (e) => {
-        const { lat, lng } = e.latlng
-        markerRef.current.setLatLng([lat, lng])
-        setTempLocation({ lat, lng })
-      })
-
-      setMapEditorLoading(false)
+ // Leaflet map initialization - fixed cleanup
+useEffect(() => {
+  if (!showMapEditor || !mapContainerRef.current) return
+  
+  // Small delay to ensure DOM is ready
+  const initTimer = setTimeout(() => {
+    if (mapRef.current) {
+      mapRef.current.remove()
+      mapRef.current = null
+      markerRef.current = null
     }
+    
+    const initialCenter = mapEditorCenter || (currency === 'USD' 
+      ? { lat: 40.7128, lng: -74.0060 }
+      : { lat: 30.0444, lng: 31.2357 })
+    
+    mapRef.current = L.map(mapContainerRef.current).setView(
+      [initialCenter.lat, initialCenter.lng],
+      15
+    )
 
-    return () => {
-      if (mapRef.current) {
-        mapRef.current.remove()
-        mapRef.current = null
-        markerRef.current = null
-      }
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors',
+      maxZoom: 19
+    }).addTo(mapRef.current)
+
+    markerRef.current = L.marker([initialCenter.lat, initialCenter.lng], {
+      draggable: true,
+      title: 'Drag to set your location'
+    }).addTo(mapRef.current)
+
+    markerRef.current.on('dragend', (e) => {
+      const { lat, lng } = e.target.getLatLng()
+      setTempLocation({ lat, lng })
+    })
+
+    mapRef.current.on('click', (e) => {
+      const { lat, lng } = e.latlng
+      markerRef.current.setLatLng([lat, lng])
+      setTempLocation({ lat, lng })
+    })
+
+    setMapEditorLoading(false)
+  }, 100)
+
+  return () => {
+    clearTimeout(initTimer)
+    if (mapRef.current) {
+      mapRef.current.remove()
+      mapRef.current = null
+      markerRef.current = null
     }
-  }, [showMapEditor, mapEditorCenter, currency])
+  }
+}, [showMapEditor, mapEditorCenter, currency])
+
 
   useEffect(() => {
     if (mapRef.current && markerRef.current && mapEditorCenter) {
@@ -548,57 +650,84 @@ export default function CartPage() {
   const [couponLoading, setCouponLoading] = useState(false)
   const [couponError, setCouponError] = useState(null)
 
-  const handleApplyCoupon = useCallback(async () => {
-    const code = couponInput.toUpperCase().trim()
-    if (!code) return
+ const handleApplyCoupon = useCallback(async () => {
+  const code = couponInput.toUpperCase().trim()
+  if (!code) return
+  
+  // If trying to apply same code that's already applied, do nothing
+  if (appliedCoupon && appliedCoupon.code === code) {
+    return
+  }
+  
+  setCouponLoading(true)
+  setCouponError(null)
+  
+  try {
+    // Server-side validation query
+    const couponsRef = collection(db, 'egp_coupons')
+    const q = query(
+      couponsRef, 
+      where('code', '==', code), 
+      where('isActive', '==', true)
+    )
+    const snapshot = await getDocs(q)
     
-    setCouponLoading(true)
-    setCouponError(null)
-    
-    try {
-      const couponsRef = collection(db, 'egp_coupons')
-      const q = query(couponsRef, where('code', '==', code), where('isActive', '==', true))
-      const snapshot = await getDocs(q)
-      
-      if (snapshot.empty) {
-        setCouponError(t('invalidCoupon') || 'Invalid or expired coupon')
-        setCouponLoading(false)
-        return
-      }
-      
-      const couponDoc = snapshot.docs[0]
-      const couponData = couponDoc.data()
-      
-      const now = new Date()
-      const expiresAt = couponData.expiresAt?.toDate?.() || new Date(couponData.expiresAt)
-      
-      if (expiresAt < now) {
-        setCouponError('This coupon has expired')
-        setCouponLoading(false)
-        return
-      }
-      
-      if (couponData.usedCount >= couponData.maxUses) {
-        setCouponError('This coupon has reached its usage limit')
-        setCouponLoading(false)
-        return
-      }
-      
-      setAppliedCoupon({
-        id: couponDoc.id,
-        code: couponData.code,
-        amount: couponData.amount,
-        label: `${currencyConfig.symbol} ${couponData.amount} off`
-      })
-      setCouponInput('')
-      
-    } catch (error) {
-      console.error('Coupon validation error:', error)
-      setCouponError('Failed to validate coupon. Please try again.')
-    } finally {
+    if (snapshot.empty) {
+      setCouponError(t('invalidCoupon') || 'Invalid or expired coupon')
       setCouponLoading(false)
+      return
     }
-  }, [couponInput, currencyConfig.symbol, t])
+    
+    const couponDoc = snapshot.docs[0]
+    const couponData = couponDoc.data()
+    
+    // Double-check expiration server-side
+    const now = new Date()
+    const expiresAt = couponData.expiresAt?.toDate?.() || new Date(couponData.expiresAt)
+    
+    if (expiresAt < now) {
+      setCouponError('This coupon has expired')
+      setCouponLoading(false)
+      return
+    }
+    
+    // Check usage limit server-side
+    if (couponData.usedCount >= couponData.maxUses) {
+      setCouponError('This coupon has reached its usage limit')
+      setCouponLoading(false)
+      return
+    }
+    
+    // Check if this coupon was already used in this session
+    const sessionUsed = sessionStorage.getItem(`coupon_${code}_used`)
+    if (sessionUsed) {
+      setCouponError('This coupon was already used in this session')
+      setCouponLoading(false)
+      return
+    }
+    
+    // Additional security: verify currency matches
+    if (couponData.currency && couponData.currency !== 'EGP') {
+      setCouponError('This coupon is not valid for EGP currency')
+      setCouponLoading(false)
+      return
+    }
+    
+    setAppliedCoupon({
+      id: couponDoc.id,
+      code: couponData.code,
+      amount: couponData.amount,
+      currency: couponData.currency || 'EGP',
+      label: `${currencyConfig.symbol} ${couponData.amount} off`
+    })
+    
+  } catch (error) {
+    console.error('Coupon validation error:', error)
+    setCouponError('Failed to validate coupon. Please try again.')
+  } finally {
+    setCouponLoading(false)
+  }
+}, [couponInput, currencyConfig.symbol, t, appliedCoupon])
 
   const discountAmount = appliedCoupon ? appliedCoupon.amount : 0
   const subtotal = Math.max(0, totalPrice - discountAmount)
@@ -606,103 +735,112 @@ export default function CartPage() {
   const finalPrice = subtotal + shippingCost
 
   // ============ CHECKOUT ============
-  const handleCheckout = useCallback(async () => {
-    if (!canCheckout || Object.keys(stockErrors).length > 0) {
-      alert(t('resolveStockIssues') || 'Please resolve stock issues before checkout')
-      return
-    }
-
-    setIsProcessing(true)
-    const orderId = `order_${Date.now()}`
+ const handleCheckout = useCallback(async () => {
+  if (!canCheckout || Object.keys(stockErrors).length > 0) {
+    alert(t('resolveStockIssues') || 'Please resolve stock issues before checkout')
+    return
+  }
+// Validate coupon currency matches order currency before final checkout
+if (appliedCoupon && appliedCoupon.currency && appliedCoupon.currency !== 'EGP') {
+  alert('Coupon currency mismatch. Please remove coupon and try again.')
+  setIsProcessing(false)
+  return
+}
+  setIsProcessing(true)
+  const orderId = `order_${Date.now()}`
+  
+  try {
+    const batch = writeBatch(db)
     
-    try {
-      const batch = writeBatch(db)
-      
-      const orderData = {
-        orderId,
-        userId: `guest_${Date.now()}`,
-        items: items.map(item => ({
-          id: item.id,
-          name: item.name,
-          price: item.price,
-          quantity: item.quantity || 1
-        })),
-        totalPrice: finalPrice,
-        totalItems: items.reduce((sum, item) => sum + (item.quantity || 1), 0),
-        currency: currencyConfig.code,
-        paymentMethod: paymentMethod === 'cod' ? 'Cash on Delivery' : 'Card (Kashier)',
-        paymentStatus: paymentMethod === 'cod' ? 'pending' : 'awaiting_payment',
-        status: 'pending',
-        customerName: deliveryInfo.name,
-        customerPhone: deliveryInfo.phone,
-        customerEmail: deliveryInfo.email,
-        customerAddress: deliveryInfo.address,
-        // FIXED: Include governorate for EGP orders
-        governorate: currency === 'EGP' ? deliveryInfo.governorate : null,
-        customerLocation: {
-          latitude: deliveryInfo.latitude,
-          longitude: deliveryInfo.longitude
-        },
-        coupon: appliedCoupon ? {
-          code: appliedCoupon.code,
-          amount: appliedCoupon.amount,
-          id: appliedCoupon.id
-        } : null,
-        shipping: {
-          ...shippingDetails,
-          governorate: currency === 'EGP' ? deliveryInfo.governorate : undefined
-        },
-        source: 'web',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      }
-
-      // Write to currency-specific collection
-      const currencyOrderRef = doc(collection(db, currencyConfig.orderCollection))
-      batch.set(currencyOrderRef, orderData)
-
-      // Write to unified mobile_orders collection
-      const mobileOrderRef = doc(db, 'mobile_orders', orderId)
-      batch.set(mobileOrderRef, {
-        ...orderData,
-        webOrderRef: currencyOrderRef.id,
-        platform: 'web',
-        isRead: false,
-        syncedToMobile: true
-      })
-
-      // Update coupon usage
-      if (appliedCoupon) {
-        const couponRef = doc(db, 'egp_coupons', appliedCoupon.id)
-        batch.update(couponRef, {
-          usedCount: increment(1)
-        })
-      }
-
-      await batch.commit()
-
-      // Cash on Delivery
-      clearCart()
-      clearDeliveryInfo()
-      navigate('/order-success', {
-        state: {
-          orderId,
-          txid: `TXN-${Date.now()}`,
-          totalPrice: finalPrice,
-          items,
-          deliveryInfo,
-          shipping: shippingDetails,
-          paymentMethod: 'cod',
-          currency: currencyConfig.code
-        }
-      })
-
-    } catch (error) {
-      console.error('Checkout error:', error)
-      alert(t('checkoutFailed') + ': ' + (error.message || t('tryAgain')))
-      setIsProcessing(false)
+    const orderData = {
+      orderId,
+      userId: `guest_${Date.now()}`,
+      items: items.map(item => ({
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity || 1
+      })),
+      totalPrice: finalPrice,
+      totalItems: items.reduce((sum, item) => sum + (item.quantity || 1), 0),
+      currency: currencyConfig.code,
+      paymentMethod: paymentMethod === 'cod' ? 'Cash on Delivery' : 'Card (Kashier)',
+      paymentStatus: paymentMethod === 'cod' ? 'pending' : 'awaiting_payment',
+      status: 'pending',
+      customerName: deliveryInfo.name,
+      customerPhone: deliveryInfo.phone,
+      customerEmail: deliveryInfo.email,
+      customerAddress: deliveryInfo.address,
+      governorate: currency === 'EGP' ? deliveryInfo.governorate : null,
+      customerLocation: {
+        latitude: deliveryInfo.latitude,
+        longitude: deliveryInfo.longitude
+      },
+      coupon: appliedCoupon ? {
+        code: appliedCoupon.code,
+        amount: appliedCoupon.amount,
+        id: appliedCoupon.id
+      } : null,
+      shipping: {
+        ...shippingDetails,
+        governorate: currency === 'EGP' ? deliveryInfo.governorate : undefined
+      },
+      source: 'web',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
     }
-  }, [
+
+    // Write to currency-specific collection
+    const currencyOrderRef = doc(collection(db, currencyConfig.orderCollection))
+    batch.set(currencyOrderRef, orderData)
+
+    // Write to unified mobile_orders collection
+    const mobileOrderRef = doc(db, 'mobile_orders', orderId)
+    batch.set(mobileOrderRef, {
+      ...orderData,
+      webOrderRef: currencyOrderRef.id,
+      platform: 'web',
+      isRead: false,
+      syncedToMobile: true
+    })
+
+    // IMPORTANT: Only increment coupon usage here, after order is created
+    if (appliedCoupon) {
+      const couponRef = doc(db, 'egp_coupons', appliedCoupon.id)
+      batch.update(couponRef, {
+        usedCount: increment(1),
+        lastUsedAt: serverTimestamp(),
+        lastUsedBy: deliveryInfo.email || 'guest'
+      })
+    }
+
+    await batch.commit()
+
+    // Clear applied coupon from session
+sessionStorage.setItem(`coupon_${code}_used`, 'true')    
+    // Rest of checkout logic...
+    clearCart()
+    clearDeliveryInfo()
+    navigate('/order-success', {
+      state: {
+        orderId,
+        txid: `TXN-${Date.now()}`,
+        totalPrice: finalPrice,
+        items,
+        deliveryInfo,
+        shipping: shippingDetails,
+        paymentMethod: 'cod',
+        currency: currencyConfig.code,
+        coupon: appliedCoupon
+      }
+    })
+
+  } catch (error) {
+    console.error('Checkout error:', error)
+    alert(t('checkoutFailed') + ': ' + (error.message || t('tryAgain')))
+    setIsProcessing(false)
+  }
+},[
     canCheckout, 
     items, 
     finalPrice, 
@@ -1229,9 +1367,53 @@ export default function CartPage() {
   }
 
   // ... (CartErrorBanner and rest of render helpers)
+// ============ MINIMUM ORDER BANNER COMPONENT ============
+const MinimumOrderBanner = () => {
+  if (currency !== 'EGP' || minimumOrderAmount <= 0 || totalPrice >= minimumOrderAmount) return null
+
+  const remaining = minimumOrderAmount - totalPrice
+
+  return (
+    <div style={{
+      padding: '16px 20px',
+      background: theme === 'light' ? '#FEF3C7' : '#451a03',
+      borderWidth: '2px',
+      borderStyle: 'solid',
+      borderColor: c.warning,
+      borderRadius: '16px',
+      marginBottom: '2rem',
+      color: c.warning,
+      animation: 'slideDown 0.6s cubic-bezier(0.23, 1, 0.320, 1)',
+      transform: `translateY(${scrollY * 0.05}px)`
+    }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+        <span style={{ fontSize: '1.3rem', flexShrink: 0 }}>⚠️</span>
+        <div style={{ flex: 1 }}>
+          <h4 style={{ margin: '0 0 8px 0', fontSize: '1rem', fontWeight: '700' }}>
+            Minimum Order Required
+          </h4>
+          <p style={{ margin: '4px 0', fontSize: '0.9rem' }}>
+            Minimum order amount is <strong>{formatPrice(minimumOrderAmount)}</strong>
+          </p>
+          <p style={{ margin: '4px 0', fontSize: '0.85rem', opacity: 0.9 }}>
+            Add <strong>{formatPrice(remaining)}</strong> more to proceed with checkout
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 
   const CartErrorBanner = () => {
+
+
     if (!cartError && Object.keys(stockErrors).length === 0) return null
+
+
+
+
+
 
     return (
       <div style={{
@@ -1470,7 +1652,7 @@ export default function CartPage() {
         </header>
 
         <CartErrorBanner />
-
+        <MinimumOrderBanner />
         <div style={{
           display: 'grid',
           gridTemplateColumns: isMobile ? '1fr' : '1fr 420px',
@@ -2335,125 +2517,153 @@ export default function CartPage() {
               </div>
             )}
 
-            {/* COUPON */}
-            <div style={{
-              background: c.card,
-              padding: '1.5rem',
-              borderRadius: '14px',
-              borderWidth: '2px',
-              borderStyle: 'solid',
-              borderColor: couponError ? c.danger : c.border,
-              boxShadow: `0 4px 12px ${c.overlay}`,
-              animation: 'slideInRight 0.7s ease-out'
-            }}>
-              <h4 style={{ margin: '0 0 1rem 0', color: c.textDark, fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                🎟️ Coupon
-              </h4>
-              
-              <div style={{ display: 'flex', gap: '8px', marginBottom: appliedCoupon || couponError ? '1rem' : 0 }}>
-                <input
-                  type="text"
-                  value={couponInput}
-                  onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
-                  placeholder="Enter coupon code"
-                  disabled={appliedCoupon || couponLoading}
-                  style={{
-                    flex: 1,
-                    padding: '10px 14px',
-                    borderWidth: '2px',
-                    borderStyle: 'solid',
-                    borderColor: couponError ? c.danger : c.border,
-                    borderRadius: '10px',
-                    background: c.surface,
-                    color: c.textDark,
-                    fontSize: '0.95rem',
-                    fontWeight: '700',
-                    textTransform: 'uppercase',
-                    fontFamily: 'inherit',
-                    transition: 'all 0.3s ease'
-                  }}
-                  onFocus={(e) => !appliedCoupon && !couponLoading && (e.target.style.borderColor = c.secondary)}
-                  onBlur={(e) => (e.target.style.borderColor = couponError ? c.danger : c.border)}
-                />
-                <button
-                  onClick={handleApplyCoupon}
-                  disabled={appliedCoupon || couponLoading || !couponInput.trim()}
-                  style={{
-                    padding: '10px 16px',
-                    background: appliedCoupon || couponLoading || !couponInput.trim() ? c.textMuted : c.secondary,
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '10px',
-                    fontWeight: '800',
-                    cursor: appliedCoupon || couponLoading || !couponInput.trim() ? 'not-allowed' : 'pointer',
-                    fontSize: '0.85rem',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                    whiteSpace: 'nowrap',
-                    transition: 'all 0.3s ease',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px'
-                  }}
-                >
-                  {couponLoading ? '⟳' : 'Apply'}
-                </button>
-              </div>
-              
-              {couponError && (
-                <div style={{
-                  padding: '10px 14px',
-                  background: `${c.danger}20`,
-                  borderLeftWidth: '4px',
-                  borderLeftStyle: 'solid',
-                  borderLeftColor: c.danger,
-                  borderRadius: '8px',
-                  color: c.danger,
-                  fontSize: '0.85rem',
-                  fontWeight: '700',
-                  animation: 'slideDown 0.4s ease-out'
-                }}>
-                  ⚠️ {couponError}
-                </div>
-              )}
-              
-              {appliedCoupon && (
-                <div style={{
-                  padding: '12px 14px',
-                  background: `${c.success}20`,
-                  borderLeftWidth: '4px',
-                  borderLeftStyle: 'solid',
-                  borderLeftColor: c.success,
-                  borderRadius: '8px',
-                  color: c.success,
-                  fontSize: '0.9rem',
-                  fontWeight: '700',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  animation: 'slideDown 0.4s ease-out'
-                }}>
-                  <span>✅ {appliedCoupon.label}</span>
-                  <button
-                    onClick={() => {
-                      setAppliedCoupon(null)
-                      setCouponError(null)
-                    }}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: c.success,
-                      cursor: 'pointer',
-                      fontWeight: '800',
-                      fontSize: '1rem',
-                      transition: 'transform 0.2s ease'
-                    }}
-                  >
-                    ✕
-                  </button>
-                </div>
-              )}
-            </div>
+            {/* COUPON SECTION */}
+<div style={{
+  background: c.card,
+  padding: '1.5rem',
+  borderRadius: '14px',
+  borderWidth: '2px',
+  borderStyle: 'solid',
+  borderColor: couponError ? c.danger : appliedCoupon ? c.success + '40' : c.border,
+  boxShadow: `0 4px 12px ${c.overlay}`,
+  animation: 'slideInRight 0.7s ease-out'
+}}>
+  <h4 style={{ margin: '0 0 1rem 0', color: c.textDark, fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
+    🎟️ Coupon
+    {appliedCoupon && <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: c.success, fontWeight: 700 }}>✓ Active</span>}
+  </h4>
+  
+  <div style={{ display: 'flex', gap: '8px', marginBottom: couponError || appliedCoupon ? '1rem' : 0 }}>
+    <div style={{ position: 'relative', flex: 1 }}>
+      <input
+        type="text"
+        value={couponInput}
+        onChange={(e) => {
+          setCouponInput(e.target.value.toUpperCase())
+          if (appliedCoupon && e.target.value.toUpperCase() !== appliedCoupon.code) {
+            // User is typing a different code, clear applied coupon
+            setAppliedCoupon(null)
+            setCouponError(null)
+          }
+        }}
+        placeholder="Enter coupon code"
+        disabled={couponLoading}
+        style={{
+          width: '100%',
+          padding: '10px 14px',
+          borderWidth: '2px',
+          borderStyle: 'solid',
+          borderColor: couponError ? c.danger : appliedCoupon ? c.success : c.border,
+          borderRadius: '10px',
+          background: appliedCoupon ? `${c.success}10` : c.surface,
+          color: c.textDark,
+          fontSize: '0.95rem',
+          fontWeight: '700',
+          textTransform: 'uppercase',
+          fontFamily: 'inherit',
+          transition: 'all 0.3s ease'
+        }}
+      />
+      {appliedCoupon && (
+        <span style={{
+          position: 'absolute',
+          right: '12px',
+          top: '50%',
+          transform: 'translateY(-50%)',
+          color: c.success,
+          fontSize: '1rem'
+        }}>
+          ✓
+        </span>
+      )}
+    </div>
+    
+    {!appliedCoupon ? (
+      <button
+        onClick={handleApplyCoupon}
+        disabled={couponLoading || !couponInput.trim()}
+        style={{
+          padding: '10px 16px',
+          background: couponLoading || !couponInput.trim() ? c.textMuted : c.secondary,
+          color: 'white',
+          border: 'none',
+          borderRadius: '10px',
+          fontWeight: '800',
+          cursor: couponLoading || !couponInput.trim() ? 'not-allowed' : 'pointer',
+          fontSize: '0.85rem',
+          whiteSpace: 'nowrap'
+        }}
+      >
+        {couponLoading ? '⟳' : 'Apply'}
+      </button>
+    ) : (
+      <button
+        onClick={() => {
+          setAppliedCoupon(null)
+          setCouponInput('')
+          setCouponError(null)
+        }}
+        style={{
+          padding: '10px 16px',
+          background: c.danger,
+          color: 'white',
+          border: 'none',
+          borderRadius: '10px',
+          fontWeight: '800',
+          cursor: 'pointer',
+          fontSize: '0.85rem'
+        }}
+      >
+        Remove
+      </button>
+    )}
+  </div>
+  
+  {couponError && (
+    <div style={{
+      padding: '10px 14px',
+      background: `${c.danger}20`,
+      borderLeftWidth: '4px',
+      borderLeftStyle: 'solid',
+      borderLeftColor: c.danger,
+      borderRadius: '8px',
+      color: c.danger,
+      fontSize: '0.85rem',
+      fontWeight: 700
+    }}>
+      ⚠️ {couponError}
+    </div>
+  )}
+  
+  {appliedCoupon && (
+    <div style={{
+      padding: '12px 16px',
+      background: `${c.success}15`,
+      borderRadius: '10px',
+      border: `1px solid ${c.success}40`,
+      display: 'flex',
+      alignItems: 'center',
+      gap: '12px'
+    }}>
+      <span style={{ fontSize: '1.5rem' }}>🎉</span>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: '0.85rem', color: c.textMuted }}>Discount applied</div>
+        <div style={{ fontSize: '1.1rem', fontWeight: 800, color: c.success }}>
+          -{currencyConfig.symbol} {appliedCoupon.amount}
+        </div>
+      </div>
+    </div>
+  )}
+  
+  <p style={{
+    marginTop: '12px',
+    fontSize: '0.75rem',
+    color: c.textMuted,
+    fontStyle: 'italic'
+  }}>
+    * Enter a different code above to replace, or remove to clear
+  </p>
+</div>
 
             {/* PAYMENT METHOD */}
             <div style={{
@@ -2648,62 +2858,75 @@ export default function CartPage() {
               </div>
 
               <button
-                onClick={handleCheckout}
-                disabled={!canCheckout}
-                style={{
-                  width: '100%',
-                  padding: '15px 20px',
-                  background: canCheckout ? `linear-gradient(135deg, ${c.secondary} 0%, ${c.accent} 100%)` : c.textMuted,
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '12px',
-                  fontWeight: '900',
-                  fontSize: '1.05rem',
-                  cursor: canCheckout ? 'pointer' : 'not-allowed',
-                  opacity: canCheckout ? 1 : 0.6,
-                  transition: 'all 0.4s cubic-bezier(0.23, 1, 0.320, 1)',
-                  boxShadow: canCheckout ? `0 4px 12px ${c.overlay}` : 'none',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px'
-                }}
-                onMouseEnter={(e) => {
-                  if (canCheckout) {
-                    e.target.style.transform = 'translateY(-4px) scale(1.05)'
-                    e.target.style.boxShadow = `0 12px 32px ${c.overlay}`
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  e.target.style.transform = 'translateY(0) scale(1)'
-                  e.target.style.boxShadow = canCheckout ? `0 4px 12px ${c.overlay}` : 'none'
-                }}
-              >
-                <span style={{ fontSize: '1.2rem' }}>
-                  {isProcessing ? '⏳' : !hasDeliveryInfo ? '📝' : Object.keys(stockErrors).length > 0 ? '❌' : '💳'}
-                </span>
-                {isProcessing ? 'Processing' : !hasDeliveryInfo ? 'Enter Delivery Info' : Object.keys(stockErrors).length > 0 ? 'Resolve Stock Issues' : `Checkout (${currencyConfig.code})`}
-              </button>
+  onClick={handleCheckout}
+  disabled={!canCheckout}
+  style={{
+    width: '100%',
+    padding: '15px 20px',
+    background: canCheckout ? `linear-gradient(135deg, ${c.secondary} 0%, ${c.accent} 100%)` : c.textMuted,
+    color: 'white',
+    border: 'none',
+    borderRadius: '12px',
+    fontWeight: '900',
+    fontSize: '1.05rem',
+    cursor: canCheckout ? 'pointer' : 'not-allowed',
+    opacity: canCheckout ? 1 : 0.6,
+    transition: 'all 0.4s cubic-bezier(0.23, 1, 0.320, 1)',
+    boxShadow: canCheckout ? `0 4px 12px ${c.overlay}` : 'none',
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px'
+  }}
+  onMouseEnter={(e) => {
+    if (canCheckout) {
+      e.target.style.transform = 'translateY(-4px) scale(1.05)'
+      e.target.style.boxShadow = `0 12px 32px ${c.overlay}`
+    }
+  }}
+  onMouseLeave={(e) => {
+    e.target.style.transform = 'translateY(0) scale(1)'
+    e.target.style.boxShadow = canCheckout ? `0 4px 12px ${c.overlay}` : 'none'
+  }}
+>
+  <span style={{ fontSize: '1.2rem' }}>
+    {isProcessing ? '⏳' : 
+     !hasDeliveryInfo ? '📝' : 
+     Object.keys(stockErrors).length > 0 ? '❌' : 
+     (currency === 'EGP' && minimumOrderAmount > 0 && totalPrice < minimumOrderAmount) ? '💰' : 
+     '💳'}
+  </span>
+  {isProcessing ? 'Processing' : 
+   !hasDeliveryInfo ? 'Enter Delivery Info' : 
+   Object.keys(stockErrors).length > 0 ? 'Resolve Stock Issues' : 
+   (currency === 'EGP' && minimumOrderAmount > 0 && totalPrice < minimumOrderAmount) ? 
+     `Min Order: ${formatPrice(minimumOrderAmount)}` : 
+   `Checkout (${currencyConfig.code})`}
+</button>
 
               {!canCheckout && (
-                <p style={{
-                  marginTop: '12px',
-                  color: c.danger,
-                  fontSize: '0.75rem',
-                  textAlign: 'center',
-                  fontWeight: '700',
-                  background: `${c.danger}15`,
-                  padding: '10px',
-                  borderRadius: '8px',
-                  borderLeftWidth: '4px',
-                  borderLeftStyle: 'solid',
-                  borderLeftColor: c.danger
-                }}>
-                  {!hasDeliveryInfo ? 'Complete delivery info (including governorate)' : 'Adjust quantities before checkout'}
-                </p>
-              )}
+  <p style={{
+    marginTop: '12px',
+    color: c.danger,
+    fontSize: '0.75rem',
+    textAlign: 'center',
+    fontWeight: '700',
+    background: `${c.danger}15`,
+    padding: '10px',
+    borderRadius: '8px',
+    borderLeftWidth: '4px',
+    borderLeftStyle: 'solid',
+    borderLeftColor: c.danger
+  }}>
+    {!hasDeliveryInfo ? 'Complete delivery info (including governorate)' : 
+     Object.keys(stockErrors).length > 0 ? 'Adjust quantities before checkout' :
+     (currency === 'EGP' && minimumOrderAmount > 0 && totalPrice < minimumOrderAmount) ? 
+       `Minimum order amount is ${formatPrice(minimumOrderAmount)}. Add ${formatPrice(minimumOrderAmount - totalPrice)} more.` :
+     'Cannot proceed with checkout'}
+  </p>
+)}
             </div>
           </aside>
         </div>
