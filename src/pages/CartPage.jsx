@@ -17,6 +17,7 @@ import {
   getDocs, 
   updateDoc, 
   increment,
+    limit,  // ← ADD IF USED
   writeBatch 
 } from 'firebase/firestore'
 import L from 'leaflet'
