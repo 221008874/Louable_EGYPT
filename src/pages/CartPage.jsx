@@ -670,7 +670,7 @@ useEffect(() => {
   const [couponError, setCouponError] = useState(null)
 
   const handleApplyCoupon = useCallback(async () => {
-  const code = couponInput.toUpperCase().trim()
+  const code = couponInput.trim() // Don't convert to uppercase here
   if (!code) return
   
   if (appliedCoupon && appliedCoupon.code === code) {
@@ -682,25 +682,62 @@ useEffect(() => {
   
   try {
     const couponsRef = collection(db, 'egp_coupons')
+    
+    // Query without case conversion - Firestore is case-sensitive
+    // Option 1: Store codes in consistent case in Firestore (recommended)
     const q = query(
       couponsRef, 
-      where('code', '==', code), 
+      where('code', '==', code), // Query as-is
       where('isActive', '==', true)
     )
+    
+    // Option 2: If you want case-insensitive matching, query all and filter
+    // (Less efficient but works for small collections)
+    /*
+    const q = query(couponsRef, where('isActive', '==', true))
+    const snapshot = await getDocs(q)
+    const couponDoc = snapshot.docs.find(doc => 
+      doc.data().code.toLowerCase() === code.toLowerCase()
+    )
+    */
+    
     const snapshot = await getDocs(q)
     
     if (snapshot.empty) {
       setCouponError(t('invalidCoupon') || 'Invalid or expired coupon')
-      setCouponInput('') // Clear invalid input
       setCouponLoading(false)
       return
     }
     
-    // ... rest of validation ...
+    const couponDoc = snapshot.docs[0]
+    const couponData = couponDoc.data()
+    
+    // Validate expiration
+    const now = new Date()
+    const expiresAt = couponData.expiresAt?.toDate?.() || new Date(couponData.expiresAt)
+    
+    if (expiresAt < now) {
+      setCouponError('Coupon has expired')
+      setCouponLoading(false)
+      return
+    }
+    
+    if (couponData.usedCount >= couponData.maxUses) {
+      setCouponError('Coupon usage limit reached')
+      setCouponLoading(false)
+      return
+    }
+    
+    // Check currency match
+    if (couponData.currency && couponData.currency !== 'EGP') {
+      setCouponError(`Coupon only valid for ${couponData.currency} orders`)
+      setCouponLoading(false)
+      return
+    }
     
     const couponToApply = {
       id: couponDoc.id,
-      code: couponData.code,
+      code: couponData.code, // Use the code from Firestore (preserves original case)
       amount: couponData.amount,
       currency: couponData.currency || 'EGP',
       label: `${currencyConfig.symbol} ${couponData.amount} off`
@@ -708,16 +745,15 @@ useEffect(() => {
     
     setAppliedCoupon(couponToApply)
     contextSetAppliedCoupon(couponToApply)
-    // Keep the input showing the applied code: setCouponInput(couponData.code)
+    setCouponInput(couponData.code) // Update input to match stored case
     
   } catch (error) {
     console.error('Coupon validation error:', error)
     setCouponError('Failed to validate coupon. Please try again.')
-    setCouponInput('') // Clear on error
   } finally {
     setCouponLoading(false)
   }
-}, [couponInput, currencyConfig.symbol, t, appliedCoupon, contextSetAppliedCoupon]) // FIXED: Added contextSetAppliedCoupon
+}, [couponInput, currencyConfig.symbol, t, appliedCoupon, contextSetAppliedCoupon])
 
   const discountAmount = appliedCoupon ? appliedCoupon.amount : 0
   const subtotal = Math.max(0, totalPrice - discountAmount)
