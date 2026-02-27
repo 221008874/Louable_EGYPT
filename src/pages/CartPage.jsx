@@ -20,7 +20,7 @@ import {
   limit,
   writeBatch,
   Timestamp,
-  runTransaction  // ADDED for atomic operations
+  runTransaction
 } from 'firebase/firestore'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -80,10 +80,10 @@ export default function CartPage() {
     deliveryInfo,
     setDeliveryInfo,
     clearDeliveryInfo,
-    appliedCoupon: contextAppliedCoupon,  // ADDED: Get from context
-    setAppliedCoupon: contextSetAppliedCoupon  // ADDED: Set in context
+    appliedCoupon: contextAppliedCoupon,
+    setAppliedCoupon: contextSetAppliedCoupon
   } = useCart()
-  const { t } = useLanguage()
+  const { t, lang } = useLanguage()
   const { theme } = useTheme()
   const { currency } = useLocation()
   const navigate = useNavigate()
@@ -97,10 +97,10 @@ export default function CartPage() {
         collection: 'products_dollar',
         orderCollection: 'orders_dollar',
         shippingZones: {
-          usa: { name: 'USA', baseCost: 15 },
-          canada: { name: 'Canada', baseCost: 25 },
-          europe: { name: 'Europe', baseCost: 35 },
-          other: { name: 'Rest of World', baseCost: 50 }
+          usa: { name: t('usa') || 'USA', baseCost: 15 },
+          canada: { name: t('canada') || 'Canada', baseCost: 25 },
+          europe: { name: t('europe') || 'Europe', baseCost: 35 },
+          other: { name: t('restOfWorld') || 'Rest of World', baseCost: 50 }
         },
         freeShippingThreshold: 150
       }
@@ -112,11 +112,11 @@ export default function CartPage() {
       orderCollection: 'orders_egp',
       freeShippingThreshold: 800
     }
-  }, [currency])
+  }, [currency, t])
 
   // ============ MAIN STATES ============
   const [isProcessing, setIsProcessing] = useState(false)
-  const [appliedCoupon, setAppliedCoupon] = useState(contextAppliedCoupon)  // Initialize from context
+  const [appliedCoupon, setAppliedCoupon] = useState(contextAppliedCoupon)
   const [couponInput, setCouponInput] = useState('')
   const [expandedItem, setExpandedItem] = useState(null)
   const [windowWidth, setWindowWidth] = useState(
@@ -127,9 +127,6 @@ export default function CartPage() {
 
   // ============ PAYMENT METHOD STATE ============
   const [paymentMethod, setPaymentMethod] = useState('cod')
-  // ============ cashe METHOD STATE ============
-
-
 
   // ============ FULL-SCREEN MAP EDITOR STATES ============
   const [showMapEditor, setShowMapEditor] = useState(false)
@@ -180,12 +177,12 @@ export default function CartPage() {
   const isSmallMobile = windowWidth < 480
 
   // ============ FIXED: Sync coupon with context ============
-useEffect(() => {
-  if (contextAppliedCoupon) {
-    setAppliedCoupon(contextAppliedCoupon)
-    setCouponInput(contextAppliedCoupon.code) // ADD THIS LINE
-  }
-}, [contextAppliedCoupon])
+  useEffect(() => {
+    if (contextAppliedCoupon) {
+      setAppliedCoupon(contextAppliedCoupon)
+      setCouponInput(contextAppliedCoupon.code)
+    }
+  }, [contextAppliedCoupon])
 
   // ============ FIXED: Handle scanned coupon from QR ============
   useEffect(() => {
@@ -195,21 +192,16 @@ useEffect(() => {
       
       if (!prefillCode && !autoApplyData) return
 
-      // Pre-fill the input field
       if (prefillCode) {
         setCouponInput(prefillCode)
         sessionStorage.removeItem('prefillCouponCode')
       }
 
-      // Auto-apply if valid
       if (autoApplyData) {
         try {
           const couponData = JSON.parse(autoApplyData)
-          
-          // FIX: Define 'now' BEFORE using it!
           const now = new Date()
           
-          // Check expiration from stored data
           const storedExpiresAt = couponData.expiresAt ? new Date(couponData.expiresAt) : null
           if (storedExpiresAt && storedExpiresAt < now) {
             console.log('Scanned coupon expired:', couponData.code)
@@ -217,7 +209,6 @@ useEffect(() => {
             return
           }
           
-          // Validate the coupon is still valid
           const couponsRef = collection(db, 'egp_coupons')
           const q = query(couponsRef, where('code', '==', couponData.code), where('isActive', '==', true))
           const snapshot = await getDocs(q)
@@ -226,30 +217,26 @@ useEffect(() => {
             const couponDoc = snapshot.docs[0]
             const couponInfo = couponDoc.data()
             
-            // Check expiration from Firestore
             const expiresAt = couponInfo.expiresAt?.toDate?.() || new Date(couponInfo.expiresAt)
             
             if (expiresAt > now && couponInfo.usedCount < couponInfo.maxUses) {
-              // Auto-apply the coupon
               const couponToApply = {
                 id: couponDoc.id,
                 code: couponInfo.code,
                 amount: couponInfo.amount,
                 currency: couponInfo.currency || 'EGP',
-                label: `${currencyConfig.symbol} ${couponInfo.amount} off`
+                label: `${currencyConfig.symbol} ${couponInfo.amount} ${t('off') || 'off'}`
               }
               
               setAppliedCoupon(couponToApply)
-              contextSetAppliedCoupon(couponToApply)  // Sync with context
+              contextSetAppliedCoupon(couponToApply)
               
-              // Mark as applied in session to prevent re-scan abuse
               sessionStorage.setItem(`coupon_${couponData.code}_used`, 'true')
               
               console.log('Scanned coupon auto-applied:', couponData.code)
             }
           }
           
-          // Clear auto-apply data
           sessionStorage.removeItem('autoApplyCoupon')
         } catch (error) {
           console.error('Error auto-applying scanned coupon:', error)
@@ -258,7 +245,7 @@ useEffect(() => {
     }
 
     handleScannedCoupon()
-  }, [currencyConfig.symbol, contextSetAppliedCoupon])  // FIXED: Added contextSetAppliedCoupon
+  }, [currencyConfig.symbol, contextSetAppliedCoupon, t])
 
   // ============ FIXED: Load governorate costs from Firestore ============
   useEffect(() => {
@@ -276,7 +263,6 @@ useEffect(() => {
         setGovernorateCosts(costs)
       } catch (error) {
         console.error('Error loading governorate costs:', error)
-        // Fallback costs if Firestore fails
         const fallbackCosts = {}
         EGYPT_GOVERNORATES.forEach(gov => {
           fallbackCosts[gov.id] = 50
@@ -292,7 +278,6 @@ useEffect(() => {
 
   // ============ FIXED: Calculate shipping based on governorate ============
   const calculateShipping = useCallback(() => {
-    // For USD, use zone-based (simplified)
     if (currency === 'USD') {
       const zone = currencyConfig.shippingZones.other
       const cost = totalPrice >= currencyConfig.freeShippingThreshold ? 0 : zone.baseCost
@@ -303,23 +288,24 @@ useEffect(() => {
       }
     }
 
-    // For EGP, use governorate-based
     if (!selectedGovernorate) {
-      return { cost: 0, zone: 'Select Governorate', isFree: false }
+      return { cost: 0, zone: t('selectGovernorate') || 'Select Governorate', isFree: false }
     }
 
     const governorateCost = governorateCosts[selectedGovernorate] || 50
     const isFree = totalPrice >= currencyConfig.freeShippingThreshold
     const cost = isFree ? 0 : governorateCost
     
-    const govName = EGYPT_GOVERNORATES.find(g => g.id === selectedGovernorate)?.name || selectedGovernorate
+    const govName = lang === 'ar' 
+      ? (EGYPT_GOVERNORATES.find(g => g.id === selectedGovernorate)?.nameAr || selectedGovernorate)
+      : (EGYPT_GOVERNORATES.find(g => g.id === selectedGovernorate)?.name || selectedGovernorate)
 
     return {
       cost,
       zone: govName,
       isFree
     }
-  }, [currency, selectedGovernorate, governorateCosts, totalPrice, currencyConfig])  // FIXED: Added currencyConfig
+  }, [currency, selectedGovernorate, governorateCosts, totalPrice, currencyConfig, t, lang])
 
   const shippingDetails = calculateShipping()
 
@@ -495,14 +481,14 @@ useEffect(() => {
       errors.phone = t('validPhoneRequired')
     }
     if (!formData.email?.trim() || !emailRegex.test(formData.email)) {
-      errors.email = 'Valid email required'
+      errors.email = t('validEmailRequired') || 'Valid email required'
     }
     if (!formData.address.trim() || formData.address.trim().length < 10) {
-      errors.address = t('addressTooShort')
+      errors.address = t('addressTooShort') || 'Address must be at least 10 characters'
     }
     
     if (currency === 'EGP' && !formData.governorate) {
-      errors.governorate = 'Please select your governorate'
+      errors.governorate = t('selectGovernorate') || 'Please select your governorate'
     }
     
     if (!formData.latitude || !formData.longitude) {
@@ -565,7 +551,6 @@ useEffect(() => {
     if (!showMapEditor || !mapContainerRef.current) return
     
     const initTimer = setTimeout(() => {
-      // Cleanup existing map
       if (mapRef.current) {
         mapRef.current.remove()
         mapRef.current = null
@@ -588,7 +573,7 @@ useEffect(() => {
 
       markerRef.current = L.marker([initialCenter.lat, initialCenter.lng], {
         draggable: true,
-        title: 'Drag to set your location'
+        title: t('dragToSetLocation') || 'Drag to set your location'
       }).addTo(mapRef.current)
 
       markerRef.current.on('dragend', (e) => {
@@ -615,7 +600,7 @@ useEffect(() => {
         markerRef.current = null
       }
     }
-  }, [showMapEditor, mapEditorCenter, currency])
+  }, [showMapEditor, mapEditorCenter, currency, t])
 
   useEffect(() => {
     if (mapRef.current && markerRef.current && mapEditorCenter) {
@@ -670,303 +655,316 @@ useEffect(() => {
   const [couponError, setCouponError] = useState(null)
 
   const handleApplyCoupon = useCallback(async () => {
-  const code = couponInput.trim() // Don't convert to uppercase here
-  if (!code) return
-  
-  if (appliedCoupon && appliedCoupon.code === code) {
-    return
-  }
-  
-  setCouponLoading(true)
-  setCouponError(null)
-  
-  try {
-    const couponsRef = collection(db, 'egp_coupons')
+    const rawInput = couponInput.trim()
+    if (!rawInput) return
     
-    // Query without case conversion - Firestore is case-sensitive
-    // Option 1: Store codes in consistent case in Firestore (recommended)
-    const q = query(
-      couponsRef, 
-      where('code', '==', code), // Query as-is
-      where('isActive', '==', true)
-    )
+    console.log('🔍 Attempting to apply coupon:', rawInput)
     
-    // Option 2: If you want case-insensitive matching, query all and filter
-    // (Less efficient but works for small collections)
-    /*
-    const q = query(couponsRef, where('isActive', '==', true))
-    const snapshot = await getDocs(q)
-    const couponDoc = snapshot.docs.find(doc => 
-      doc.data().code.toLowerCase() === code.toLowerCase()
-    )
-    */
+    setCouponLoading(true)
+    setCouponError(null)
     
-    const snapshot = await getDocs(q)
-    
-    if (snapshot.empty) {
-      setCouponError(t('invalidCoupon') || 'Invalid or expired coupon')
+    try {
+      const couponsRef = collection(db, 'egp_coupons')
+      
+      let q = query(
+        couponsRef, 
+        where('code', '==', rawInput),
+        where('isActive', '==', true)
+      )
+      let snapshot = await getDocs(q)
+      
+      if (snapshot.empty) {
+        console.log('❌ Exact match failed, trying uppercase...')
+        q = query(
+          couponsRef,
+          where('code', '==', rawInput.toUpperCase()),
+          where('isActive', '==', true)
+        )
+        snapshot = await getDocs(q)
+      }
+      
+      if (snapshot.empty) {
+        console.log('❌ Uppercase failed, trying lowercase...')
+        q = query(
+          couponsRef,
+          where('code', '==', rawInput.toLowerCase()),
+          where('isActive', '==', true)
+        )
+        snapshot = await getDocs(q)
+      }
+      
+      if (snapshot.empty) {
+        console.log('❌ Lowercase failed, trying case-insensitive...')
+        q = query(couponsRef, where('isActive', '==', true))
+        const allCoupons = await getDocs(q)
+        const matchingDoc = allCoupons.docs.find(doc => {
+          const code = doc.data().code
+          const match = code.toLowerCase() === rawInput.toLowerCase()
+          console.log(`Comparing: "${code}" vs "${rawInput}" -> ${match}`)
+          return match
+        })
+        
+        if (matchingDoc) {
+          snapshot = { docs: [matchingDoc], empty: false }
+        }
+      }
+      
+      console.log('📊 Final snapshot:', {
+        empty: snapshot.empty,
+        size: snapshot.size,
+        docs: snapshot.docs?.map(d => ({ id: d.id, ...d.data() }))
+      })
+      
+      if (snapshot.empty) {
+        setCouponError(t('invalidCoupon'))
+        setCouponLoading(false)
+        return
+      }
+      
+      const couponDoc = snapshot.docs[0]
+      const couponData = couponDoc.data()
+      
+      console.log('✅ Found coupon:', couponData)
+      
+      const now = new Date()
+      const expiresAt = couponData.expiresAt?.toDate?.() || new Date(couponData.expiresAt)
+      
+      if (expiresAt < now) {
+        console.log('⏰ Coupon expired:', expiresAt)
+        setCouponError(t('couponExpired') || 'Coupon expired')
+        setCouponLoading(false)
+        return
+      }
+      
+      if (couponData.usedCount >= couponData.maxUses) {
+        console.log('🚫 Usage limit reached:', couponData.usedCount, '/', couponData.maxUses)
+        setCouponError(t('couponExhausted') || 'Coupon fully used')
+        setCouponLoading(false)
+        return
+      }
+      
+      if (couponData.currency && couponData.currency !== 'EGP') {
+        setCouponError(t('couponCurrencyMismatch') || `Coupon valid only for ${couponData.currency}`)
+        setCouponLoading(false)
+        return
+      }
+      
+      const couponToApply = {
+        id: couponDoc.id,
+        code: couponData.code,
+        amount: couponData.amount,
+        currency: couponData.currency || 'EGP',
+        label: `${currencyConfig.symbol} ${couponData.amount} ${t('off') || 'off'}`
+      }
+      
+      setAppliedCoupon(couponToApply)
+      contextSetAppliedCoupon(couponToApply)
+      setCouponInput(couponData.code)
+      
+      console.log('🎉 Coupon applied successfully:', couponToApply)
+      
+    } catch (error) {
+      console.error('💥 Coupon validation error:', error)
+      setCouponError(t('couponError') || 'Error, please try again')
+    } finally {
       setCouponLoading(false)
-      return
     }
-    
-    const couponDoc = snapshot.docs[0]
-    const couponData = couponDoc.data()
-    
-    // Validate expiration
-    const now = new Date()
-    const expiresAt = couponData.expiresAt?.toDate?.() || new Date(couponData.expiresAt)
-    
-    if (expiresAt < now) {
-      setCouponError('Coupon has expired')
-      setCouponLoading(false)
-      return
-    }
-    
-    if (couponData.usedCount >= couponData.maxUses) {
-      setCouponError('Coupon usage limit reached')
-      setCouponLoading(false)
-      return
-    }
-    
-    // Check currency match
-    if (couponData.currency && couponData.currency !== 'EGP') {
-      setCouponError(`Coupon only valid for ${couponData.currency} orders`)
-      setCouponLoading(false)
-      return
-    }
-    
-    const couponToApply = {
-      id: couponDoc.id,
-      code: couponData.code, // Use the code from Firestore (preserves original case)
-      amount: couponData.amount,
-      currency: couponData.currency || 'EGP',
-      label: `${currencyConfig.symbol} ${couponData.amount} off`
-    }
-    
-    setAppliedCoupon(couponToApply)
-    contextSetAppliedCoupon(couponToApply)
-    setCouponInput(couponData.code) // Update input to match stored case
-    
-  } catch (error) {
-    console.error('Coupon validation error:', error)
-    setCouponError('Failed to validate coupon. Please try again.')
-  } finally {
-    setCouponLoading(false)
-  }
-}, [couponInput, currencyConfig.symbol, t, appliedCoupon, contextSetAppliedCoupon])
+  }, [couponInput, currencyConfig.symbol, t, appliedCoupon, contextSetAppliedCoupon])
 
   const discountAmount = appliedCoupon ? appliedCoupon.amount : 0
   const subtotal = Math.max(0, totalPrice - discountAmount)
   const shippingCost = shippingDetails.cost
   const finalPrice = subtotal + shippingCost
 
-  // ============ FIXED: Checkout with proper error handling and atomic operations ============
-   const handleCheckout = useCallback(async () => {
-  if (!canCheckout || Object.keys(stockErrors).length > 0) {
-    alert(t('resolveStockIssues') || 'Please resolve stock issues before checkout')
-    return
-  }
-
-  // Validate coupon currency matches order currency before final checkout
-  if (appliedCoupon && appliedCoupon.currency && appliedCoupon.currency !== 'EGP') {
-    alert('Coupon currency mismatch. Please remove coupon and try again.')
-    return
-  }
-
-  setIsProcessing(true)
-  const orderId = `order_${Date.now()}`
-  
-  // RECALCULATE FINAL PRICE HERE to ensure it's correct
-  const discountAmount = appliedCoupon ? appliedCoupon.amount : 0
-  const calculatedSubtotal = Math.max(0, totalPrice - discountAmount)
-  const calculatedShipping = shippingDetails.cost
-  const calculatedFinalPrice = calculatedSubtotal + calculatedShipping
-  
-  console.log('Checkout calculation:', {
-    totalPrice,
-    discountAmount,
-    calculatedSubtotal,
-    shipping: calculatedShipping,
-    finalPrice: calculatedFinalPrice,
-    appliedCoupon
-  })
-  
-  try {
-    const orderData = await runTransaction(db, async (transaction) => {
-      // PHASE 1: ALL READS FIRST
-      
-      // 1. Read all product stocks first
-      const stockChecks = await Promise.all(items.map(async (item) => {
-        const productRef = doc(db, currencyConfig.collection, item.id)
-        const productSnap = await transaction.get(productRef)
-        
-        if (!productSnap.exists()) {
-          throw new Error(`Product ${item.name} no longer exists`)
-        }
-        
-        const currentStock = productSnap.data().stock
-        if (currentStock < item.quantity) {
-          throw new Error(`Insufficient stock for ${item.name}. Available: ${currentStock}`)
-        }
-        
-        return { ref: productRef, newStock: currentStock - item.quantity, item }
-      }))
-      
-      // 2. Read coupon data if applicable
-      let couponData = null
-      let couponRef = null
-      
-      if (appliedCoupon) {
-        couponRef = doc(db, 'egp_coupons', appliedCoupon.id)
-        const couponSnap = await transaction.get(couponRef)
-        
-        if (!couponSnap.exists()) {
-          throw new Error('Coupon no longer exists')
-        }
-        
-        couponData = couponSnap.data()
-        if (couponData.usedCount >= couponData.maxUses) {
-          throw new Error('Coupon has been fully used')
-        }
-      }
-      
-      // PHASE 2: ALL WRITES AFTER ALL READS
-      
-      // 3. Create order data object
-      const orderData = {
-        orderId,
-        userId: `guest_${Date.now()}`,
-        items: items.map(item => ({
-          id: item.id,
-          name: item.name,
-          price: item.price,
-          quantity: item.quantity || 1
-        })),
-        totalPrice: calculatedFinalPrice, // USE RECALCULATED VALUE
-        subtotal: totalPrice,
-        discount: discountAmount,
-        shippingCost: calculatedShipping,
-        totalItems: items.reduce((sum, item) => sum + (item.quantity || 1), 0),
-        currency: currencyConfig.code,
-        paymentMethod: paymentMethod === 'cod' ? 'Cash on Delivery' : 'Card (Kashier)',
-        paymentStatus: paymentMethod === 'cod' ? 'pending' : 'awaiting_payment',
-        status: 'pending',
-        customerName: deliveryInfo.name,
-        customerPhone: deliveryInfo.phone,
-        customerEmail: deliveryInfo.email,
-        customerAddress: deliveryInfo.address,
-        governorate: currency === 'EGP' ? deliveryInfo.governorate : null,
-        customerLocation: {
-          latitude: deliveryInfo.latitude,
-          longitude: deliveryInfo.longitude
-        },
-        coupon: appliedCoupon ? {
-          code: appliedCoupon.code,
-          amount: appliedCoupon.amount,
-          id: appliedCoupon.id
-        } : null,
-        shipping: {
-          ...shippingDetails,
-          governorate: currency === 'EGP' ? deliveryInfo.governorate : undefined
-        },
-        source: 'web',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      }
-
-      // 4. Write order to currency-specific collection
-      const currencyOrderRef = doc(collection(db, currencyConfig.orderCollection))
-      transaction.set(currencyOrderRef, orderData)
-
-      // 5. Write to unified mobile_orders collection
-      const mobileOrderRef = doc(db, 'mobile_orders', orderId)
-      transaction.set(mobileOrderRef, {
-        ...orderData,
-        webOrderRef: currencyOrderRef.id,
-        platform: 'web',
-        isRead: false,
-        syncedToMobile: true
-      })
-
-      // 6. Update stock
-      stockChecks.forEach(({ ref, newStock }) => {
-        transaction.update(ref, { stock: newStock })
-      })
-
-      // 7. Update coupon usage
-      if (appliedCoupon && couponRef) {
-        transaction.update(couponRef, {
-          usedCount: increment(1),
-          lastUsedAt: Timestamp.now(),
-          lastUsedBy: deliveryInfo.email || 'guest'
-        })
-      }
-      
-      return orderData // Return order data for use after transaction
-    })
-
-    // Transaction succeeded
-    if (appliedCoupon) {
-      sessionStorage.setItem(`coupon_${appliedCoupon.code}_used`, 'true')
+  // ============ FIXED: Checkout with proper error handling ============
+  const handleCheckout = useCallback(async () => {
+    if (!canCheckout || Object.keys(stockErrors).length > 0) {
+      alert(t('resolveStockIssues'))
+      return
     }
-    
-    // Clear cart and redirect WITH ORDER DATA
-    clearCart()
-    clearDeliveryInfo()
-    
-    // Navigate with order data in state
-    // In CartPage.jsx handleCheckout, update the navigation:
-navigate('/order-success', { 
-  state: { 
-    orderId,
-    orderData: {
-      totalPrice: calculatedFinalPrice,
-      subtotal: totalPrice,
-      discount: discountAmount,
-      shippingCost: calculatedShipping,
-      currency: currencyConfig.code,
-      paymentMethod: paymentMethod === 'cod' ? 'Cash on Delivery' : 'Card (Kashier)',
-      // ADD THESE STATUS FIELDS
-      status: 'pending', // or 'awaiting_payment' for card
-      paymentStatus: paymentMethod === 'cod' ? 'pending' : 'awaiting_payment',
-      items: items.map(item => ({
-        id: item.id,
-        name: item.name,
-        price: item.price,
-        quantity: item.quantity || 1
-      })),
-      customerName: deliveryInfo.name,
-      customerEmail: deliveryInfo.email,
-      customerPhone: deliveryInfo.phone,
-      governorate: currency === 'EGP' ? deliveryInfo.governorate : null
-    },
-    securityToken: orderId.split('_')[1]
-  } 
-})
-    
-  } catch (error) {
-    console.error('Checkout error:', error)
-    alert(t('checkoutFailed') + ': ' + (error.message || t('tryAgain')))
-    setIsProcessing(false)
-  }
-}, [
-  canCheckout, 
-  items, 
-  totalPrice, 
-  deliveryInfo, 
-  appliedCoupon, 
-  shippingDetails, 
-  paymentMethod, 
-  stockErrors,
-  t,
-  clearCart, 
-  clearDeliveryInfo, 
-  navigate,
-  currencyConfig,
-  currency
-])
 
-   const handleQuantityUpdate = useCallback(async (item, newQuantity) => {
+    if (appliedCoupon && appliedCoupon.currency && appliedCoupon.currency !== 'EGP') {
+      alert(t('couponCurrencyMismatch') || 'Coupon currency mismatch')
+      return
+    }
+
+    setIsProcessing(true)
+    const orderId = `order_${Date.now()}`
+    
+    const discountAmount = appliedCoupon ? appliedCoupon.amount : 0
+    const calculatedSubtotal = Math.max(0, totalPrice - discountAmount)
+    const calculatedShipping = shippingDetails.cost
+    const calculatedFinalPrice = calculatedSubtotal + calculatedShipping
+    
+    console.log('Checkout calculation:', {
+      totalPrice,
+      discountAmount,
+      calculatedSubtotal,
+      shipping: calculatedShipping,
+      finalPrice: calculatedFinalPrice,
+      appliedCoupon
+    })
+    
+    try {
+      const orderData = await runTransaction(db, async (transaction) => {
+        const stockChecks = await Promise.all(items.map(async (item) => {
+          const productRef = doc(db, currencyConfig.collection, item.id)
+          const productSnap = await transaction.get(productRef)
+          
+          if (!productSnap.exists()) {
+            throw new Error(t('productNotFound') || `Product ${item.name} no longer exists`)
+          }
+          
+          const currentStock = productSnap.data().stock
+          if (currentStock < item.quantity) {
+            throw new Error(t('insufficientStock') || `Insufficient stock for ${item.name}`)
+          }
+          
+          return { ref: productRef, newStock: currentStock - item.quantity, item }
+        }))
+        
+        let couponData = null
+        let couponRef = null
+        
+        if (appliedCoupon) {
+          couponRef = doc(db, 'egp_coupons', appliedCoupon.id)
+          const couponSnap = await transaction.get(couponRef)
+          
+          if (!couponSnap.exists()) {
+            throw new Error(t('couponNotFound') || 'Coupon no longer exists')
+          }
+          
+          couponData = couponSnap.data()
+          if (couponData.usedCount >= couponData.maxUses) {
+            throw new Error(t('couponExhausted') || 'Coupon fully used')
+          }
+        }
+        
+        const orderData = {
+          orderId,
+          userId: `guest_${Date.now()}`,
+          items: items.map(item => ({
+            id: item.id,
+            name: item.name,
+            price: item.price,
+            quantity: item.quantity || 1
+          })),
+          totalPrice: calculatedFinalPrice,
+          subtotal: totalPrice,
+          discount: discountAmount,
+          shippingCost: calculatedShipping,
+          totalItems: items.reduce((sum, item) => sum + (item.quantity || 1), 0),
+          currency: currencyConfig.code,
+          paymentMethod: paymentMethod === 'cod' ? t('cashOnDelivery') : t('cardPayment'),
+          paymentStatus: paymentMethod === 'cod' ? 'pending' : 'awaiting_payment',
+          status: 'pending',
+          customerName: deliveryInfo.name,
+          customerPhone: deliveryInfo.phone,
+          customerEmail: deliveryInfo.email,
+          customerAddress: deliveryInfo.address,
+          governorate: currency === 'EGP' ? deliveryInfo.governorate : null,
+          customerLocation: {
+            latitude: deliveryInfo.latitude,
+            longitude: deliveryInfo.longitude
+          },
+          coupon: appliedCoupon ? {
+            code: appliedCoupon.code,
+            amount: appliedCoupon.amount,
+            id: appliedCoupon.id
+          } : null,
+          shipping: {
+            ...shippingDetails,
+            governorate: currency === 'EGP' ? deliveryInfo.governorate : undefined
+          },
+          source: 'web',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        }
+
+        const currencyOrderRef = doc(collection(db, currencyConfig.orderCollection))
+        transaction.set(currencyOrderRef, orderData)
+
+        const mobileOrderRef = doc(db, 'mobile_orders', orderId)
+        transaction.set(mobileOrderRef, {
+          ...orderData,
+          webOrderRef: currencyOrderRef.id,
+          platform: 'web',
+          isRead: false,
+          syncedToMobile: true
+        })
+
+        stockChecks.forEach(({ ref, newStock }) => {
+          transaction.update(ref, { stock: newStock })
+        })
+
+        if (appliedCoupon && couponRef) {
+          transaction.update(couponRef, {
+            usedCount: increment(1),
+            lastUsedAt: Timestamp.now(),
+            lastUsedBy: deliveryInfo.email || 'guest'
+          })
+        }
+        
+        return orderData
+      })
+
+      if (appliedCoupon) {
+        sessionStorage.setItem(`coupon_${appliedCoupon.code}_used`, 'true')
+      }
+      
+      clearCart()
+      clearDeliveryInfo()
+      
+      navigate('/order-success', { 
+        state: { 
+          orderId,
+          orderData: {
+            totalPrice: calculatedFinalPrice,
+            subtotal: totalPrice,
+            discount: discountAmount,
+            shippingCost: calculatedShipping,
+            currency: currencyConfig.code,
+            paymentMethod: paymentMethod === 'cod' ? t('cashOnDelivery') : t('cardPayment'),
+            status: 'pending',
+            paymentStatus: paymentMethod === 'cod' ? 'pending' : 'awaiting_payment',
+            items: items.map(item => ({
+              id: item.id,
+              name: item.name,
+              price: item.price,
+              quantity: item.quantity || 1
+            })),
+            customerName: deliveryInfo.name,
+            customerEmail: deliveryInfo.email,
+            customerPhone: deliveryInfo.phone,
+            governorate: currency === 'EGP' ? deliveryInfo.governorate : null
+          },
+          securityToken: orderId.split('_')[1]
+        } 
+      })
+      
+    } catch (error) {
+      console.error('Checkout error:', error)
+      alert((t('checkoutFailed') || 'Checkout failed') + ': ' + (error.message || t('tryAgain')))
+      setIsProcessing(false)
+    }
+  }, [
+    canCheckout, 
+    items, 
+    totalPrice, 
+    deliveryInfo, 
+    appliedCoupon, 
+    shippingDetails, 
+    paymentMethod, 
+    stockErrors,
+    t,
+    clearCart, 
+    clearDeliveryInfo, 
+    navigate,
+    currencyConfig,
+    currency
+  ])
+
+  const handleQuantityUpdate = useCallback(async (item, newQuantity) => {
     if (newQuantity < 1) {
       removeFromCart(item.id)
       return
@@ -1049,7 +1047,7 @@ navigate('/order-success', {
     return `${price.toFixed(2)} EGP`
   }, [currencyConfig.code])
 
-  // ... (MapEditorModal and other components remain the same)
+  // ============ MAP EDITOR MODAL COMPONENT ============
   const MapEditorModal = () => {
     if (!showMapEditor) return null
 
@@ -1085,7 +1083,7 @@ navigate('/order-success', {
               alignItems: 'center',
               gap: '12px'
             }}>
-              🗺️ Select Location
+              🗺️ {t('selectLocation') || 'Select Location'}
             </h2>
             <p style={{
               margin: '4px 0 0 0',
@@ -1093,7 +1091,7 @@ navigate('/order-success', {
               fontSize: '0.85rem',
               fontWeight: '600'
             }}>
-              Drag the marker or click on map to set your location
+              {t('dragMarkerOrClick') || 'Drag the marker or click on map to set your location'}
             </p>
           </div>
           <button
@@ -1148,8 +1146,8 @@ navigate('/order-success', {
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
               placeholder={currency === 'USD' 
-                ? "Search for area, street, or landmark..." 
-                : "Search for area, street, or landmark in Egypt..."}
+                ? (t('searchAreaStreet') || "Search for area, street, or landmark...")
+                : (t('searchAreaStreetEgypt') || "Search for area, street, or landmark in Egypt...")}
               style={{
                 width: '100%',
                 padding: '12px 16px',
@@ -1231,7 +1229,7 @@ navigate('/order-success', {
               minWidth: '100px'
             }}
           >
-            {isSearching ? '...' : '🔍 Search'}
+            {isSearching ? '...' : `🔍 ${t('search') || 'Search'}`}
           </button>
         </div>
 
@@ -1260,7 +1258,7 @@ navigate('/order-success', {
                   📡
                 </div>
                 <p style={{ color: c.textMuted, fontWeight: '700' }}>
-                  Loading map...
+                  {t('loadingMap') || 'Loading map...'}
                 </p>
               </div>
             </div>
@@ -1293,7 +1291,7 @@ navigate('/order-success', {
             borderColor: c.border,
             pointerEvents: 'none'
           }}>
-            🖱️ Click map or drag marker to set location
+            {t('clickMapOrDrag') || '🖱️ Click map or drag marker to set location'}
           </div>
 
           <div style={{
@@ -1328,7 +1326,7 @@ navigate('/order-success', {
                   letterSpacing: '0.5px',
                   marginBottom: '0.5rem'
                 }}>
-                  Latitude
+                  {t('latitude') || 'Latitude'}
                 </label>
                 <div style={{
                   padding: '10px 14px',
@@ -1355,7 +1353,7 @@ navigate('/order-success', {
                   letterSpacing: '0.5px',
                   marginBottom: '0.5rem'
                 }}>
-                  Longitude
+                  {t('longitude') || 'Longitude'}
                 </label>
                 <div style={{
                   padding: '10px 14px',
@@ -1406,7 +1404,7 @@ navigate('/order-success', {
                   e.currentTarget.style.transform = 'translateY(0)'
                 }}
               >
-                ✕ Cancel
+                ✕ {t('cancel') || 'Cancel'}
               </button>
               <button
                 onClick={handleSaveMapLocation}
@@ -1441,7 +1439,7 @@ navigate('/order-success', {
                   e.currentTarget.style.boxShadow = !tempLocation ? 'none' : `0 4px 12px ${c.success}40`
                 }}
               >
-                <span>✓</span> Save Location
+                <span>✓</span> {t('saveLocation') || 'Save Location'}
               </button>
             </div>
           </div>
@@ -1489,13 +1487,13 @@ navigate('/order-success', {
           <span style={{ fontSize: '1.3rem', flexShrink: 0 }}>⚠️</span>
           <div style={{ flex: 1 }}>
             <h4 style={{ margin: '0 0 8px 0', fontSize: '1rem', fontWeight: '700' }}>
-              Minimum Order Required
+              {t('minimumOrderRequired') || 'Minimum Order Required'}
             </h4>
             <p style={{ margin: '4px 0', fontSize: '0.9rem' }}>
-              Minimum order amount is <strong>{formatPrice(minimumOrderAmount)}</strong>
+              {t('minimumOrderAmountIs') || 'Minimum order amount is'} <strong>{formatPrice(minimumOrderAmount)}</strong>
             </p>
             <p style={{ margin: '4px 0', fontSize: '0.85rem', opacity: 0.9 }}>
-              Add <strong>{formatPrice(remaining)}</strong> more to proceed with checkout
+              {t('addMoreToProceed') || 'Add'} <strong>{formatPrice(remaining)}</strong> {t('moreToCheckout') || 'more to proceed with checkout'}
             </p>
           </div>
         </div>
@@ -1523,7 +1521,7 @@ navigate('/order-success', {
           <span style={{ fontSize: '1.3rem', flexShrink: 0 }}>⚠️</span>
           <div style={{ flex: 1 }}>
             <h4 style={{ margin: '0 0 8px 0', fontSize: '1rem', fontWeight: '700' }}>
-              Stock Issues Detected
+              {t('stockIssuesDetected')}
             </h4>
             {Object.entries(stockErrors).map(([id, error]) => (
               <p key={id} style={{ margin: '4px 0', fontSize: '0.85rem' }}>
@@ -1553,7 +1551,7 @@ navigate('/order-success', {
                 e.target.style.transform = 'scale(1)'
               }}
             >
-              Dismiss
+              {t('dismiss')}
             </button>
           </div>
         </div>
@@ -1589,7 +1587,7 @@ navigate('/order-success', {
           textAlign: 'center',
           animation: 'fadeInUp 0.8s ease-out'
         }}>
-          Your cart is empty
+          {t('emptyCart')}
         </h2>
         <p style={{
           color: c.textMuted,
@@ -1598,7 +1596,7 @@ navigate('/order-success', {
           textAlign: 'center',
           animation: 'fadeInUp 1s ease-out 0.2s backwards'
         }}>
-          Browse our collection and add some delicious items!
+          {t('browseOurCollectionAndAddSomeItems')}
         </p>
         <div style={{
           display: 'inline-flex',
@@ -1615,7 +1613,7 @@ navigate('/order-success', {
           color: c.textMuted
         }}>
           <span>{currency === 'USD' ? '💵' : '🇪🇬'}</span>
-          <span>Shopping in {currencyConfig.code}</span>
+          <span>{t('shoppingIn') || 'Shopping in'} {currencyConfig.code}</span>
         </div>
         <button
           onClick={() => navigate('/home')}
@@ -1641,7 +1639,7 @@ navigate('/order-success', {
             e.target.style.boxShadow = `0 8px 24px rgba(212, 160, 23, 0.25)`
           }}
         >
-          🛍️ Continue Shopping
+          🛍️ {t('continueShopping')}
         </button>
       </div>
     )
@@ -1690,7 +1688,7 @@ navigate('/order-success', {
               e.currentTarget.style.transform = 'translateX(0) scale(1)'
             }}
           >
-            ← {!isMobile && 'Back'}
+            ← {!isMobile && t('back')}
           </button>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
@@ -1721,7 +1719,7 @@ navigate('/order-success', {
               alignItems: 'center',
               gap: '16px'
             }}>
-              🛒 Cart
+              🛒 {t('cart')}
               <span style={{
                 fontSize: isMobile ? '1rem' : '1.3rem',
                 fontWeight: '800',
@@ -1844,7 +1842,7 @@ navigate('/order-success', {
                         fontWeight: '900',
                         textTransform: 'uppercase'
                       }}>
-                        Out of Stock
+                        {t('outOfStock')}
                       </div>
                     )}
                   </div>
@@ -1909,7 +1907,7 @@ navigate('/order-success', {
                         fontSize: '0.85rem',
                         marginBottom: '1rem'
                       }}>
-                        @ {formatPrice(item.price)} each
+                        @ {formatPrice(item.price)} {t('each')}
                       </div>
 
                       <div style={{
@@ -1921,11 +1919,11 @@ navigate('/order-success', {
                         fontWeight: '700'
                       }}>
                         {isOutOfStock ? (
-                          <span style={{ color: c.danger }}>❌ Out of Stock</span>
+                          <span style={{ color: c.danger }}>❌ {t('outOfStock')}</span>
                         ) : isLowStock ? (
-                          <span style={{ color: c.warning }}>⚡ {product.stock} Left</span>
+                          <span style={{ color: c.warning }}>⚡ {t('onlyLeft', { count: product.stock })}</span>
                         ) : (
-                          <span style={{ color: c.success }}>✓ In Stock</span>
+                          <span style={{ color: c.success }}>✓ {t('inStock', { count: product.stock })}</span>
                         )}
                       </div>
 
@@ -1971,7 +1969,7 @@ navigate('/order-success', {
                               e.target.style.letterSpacing = '0px'
                             }}
                           >
-                            🍬 {product.flavors.length} flavors {expandedItem === item.id ? '▲' : '▼'}
+                            🍬 {product.flavors.length} {t('flavors')} {expandedItem === item.id ? '▲' : '▼'}
                           </button>
                           {expandedItem === item.id && (
                             <div style={{
@@ -2014,7 +2012,7 @@ navigate('/order-success', {
                         textTransform: 'uppercase',
                         letterSpacing: '0.5px'
                       }}>
-                        Qty:
+                        {t('qty')}:
                       </span>
                       <div style={{
                         display: 'flex',
@@ -2085,7 +2083,7 @@ navigate('/order-success', {
                           fontWeight: '700',
                           textTransform: 'uppercase'
                         }}>
-                          Max Reached
+                          {t('maxReached')}
                         </span>
                       )}
                     </div>
@@ -2124,7 +2122,7 @@ navigate('/order-success', {
                   alignItems: 'center',
                   gap: '8px'
                 }}>
-                  📍 Delivery Info
+                  📍 {t('deliveryInformation')}
                   <span style={{
                     marginLeft: 'auto',
                     fontSize: '0.7rem',
@@ -2148,13 +2146,13 @@ navigate('/order-success', {
                       textTransform: 'uppercase',
                       letterSpacing: '0.5px'
                     }}>
-                      Full Name <span style={{ color: c.danger }}>*</span>
+                      {t('fullName')} <span style={{ color: c.danger }}>*</span>
                     </label>
                     <input
                       name="name"
                       value={formData.name}
                       onChange={handleInputChange}
-                      placeholder="Enter your full name"
+                      placeholder={t('enterFullName') || "Enter your full name"}
                       style={{
                         width: '100%',
                         padding: '12px 16px',
@@ -2186,7 +2184,7 @@ navigate('/order-success', {
                       textTransform: 'uppercase',
                       letterSpacing: '0.5px'
                     }}>
-                      Phone Number <span style={{ color: c.danger }}>*</span>
+                      {t('phoneNumber')} <span style={{ color: c.danger }}>*</span>
                     </label>
                     <input
                       name="phone"
@@ -2225,7 +2223,7 @@ navigate('/order-success', {
                       textTransform: 'uppercase',
                       letterSpacing: '0.5px'
                     }}>
-                      Email <span style={{ color: c.danger }}>*</span>
+                      {t('email')} <span style={{ color: c.danger }}>*</span>
                     </label>
                     <input
                       name="email"
@@ -2265,7 +2263,7 @@ navigate('/order-success', {
                         textTransform: 'uppercase',
                         letterSpacing: '0.5px'
                       }}>
-                        Governorate <span style={{ color: c.danger }}>*</span>
+                        {t('governorate') || 'Governorate'} <span style={{ color: c.danger }}>*</span>
                       </label>
                       <select
                         name="governorate"
@@ -2292,11 +2290,11 @@ navigate('/order-success', {
                         onBlur={(e) => (e.target.style.borderColor = formErrors.governorate ? c.danger : c.border)}
                       >
                         <option value="">
-                          {loadingGovernorates ? 'Loading...' : 'Select your governorate'}
+                          {loadingGovernorates ? t('loading') || 'Loading...' : t('selectGovernorate')}
                         </option>
                         {EGYPT_GOVERNORATES.map((gov) => (
                           <option key={gov.id} value={gov.id}>
-                            {gov.name} - {gov.nameAr} ({currencyConfig.symbol} {governorateCosts[gov.id] || '--'})
+                            {lang === 'ar' ? `${gov.nameAr} - ${gov.name}` : `${gov.name} - ${gov.nameAr}`} ({currencyConfig.symbol} {governorateCosts[gov.id] || '--'})
                           </option>
                         ))}
                       </select>
@@ -2311,7 +2309,7 @@ navigate('/order-success', {
                         marginTop: '6px',
                         fontStyle: 'italic'
                       }}>
-                        Shipping cost varies by governorate
+                        {t('shippingCostVaries') || 'Shipping cost varies by governorate'}
                       </div>
                     </div>
                   )}
@@ -2326,13 +2324,13 @@ navigate('/order-success', {
                       textTransform: 'uppercase',
                       letterSpacing: '0.5px'
                     }}>
-                      Address <span style={{ color: c.danger }}>*</span>
+                      {t('detailedAddress')} <span style={{ color: c.danger }}>*</span>
                     </label>
                     <textarea
                       name="address"
                       value={formData.address}
                       onChange={handleInputChange}
-                      placeholder="Enter detailed address"
+                      placeholder={t('enterDetailedAddress') || "Enter detailed address"}
                       rows="3"
                       style={{
                         width: '100%',
@@ -2366,13 +2364,13 @@ navigate('/order-success', {
                       textTransform: 'uppercase',
                       letterSpacing: '0.5px'
                     }}>
-                      City/Area {currency !== 'EGP' && <span style={{ color: c.danger }}>*</span>}
+                      {t('city')} {currency !== 'EGP' && <span style={{ color: c.danger }}>*</span>}
                     </label>
                     <input
                       name="city"
                       value={formData.city}
                       onChange={handleInputChange}
-                      placeholder={currency === 'USD' ? "Enter city (e.g., New York, London)" : "Enter city or area (e.g., Nasr City, Mohandessin)"}
+                      placeholder={currency === 'USD' ? t('enterCityExample') || "Enter city (e.g., New York)" : t('enterCityAreaExample') || "Enter city or area (e.g., Nasr City)"}
                       style={{
                         width: '100%',
                         padding: '12px 16px',
@@ -2406,7 +2404,7 @@ navigate('/order-success', {
                       textTransform: 'uppercase',
                       letterSpacing: '0.5px'
                     }}>
-                      <span>Location <span style={{ color: c.danger }}>*</span></span>
+                      <span>{t('location')} <span style={{ color: c.danger }}>*</span></span>
                       <button
                         type="button"
                         onClick={handleOpenMapEditor}
@@ -2432,7 +2430,7 @@ navigate('/order-success', {
                           e.currentTarget.style.boxShadow = 'none'
                         }}
                       >
-                        🗺️ Edit Location
+                        🗺️ {t('editLocation') || 'Edit Location'}
                       </button>
                     </label>
 
@@ -2449,7 +2447,7 @@ navigate('/order-success', {
                         marginBottom: '0.5rem',
                         fontWeight: '700'
                       }}>
-                        ⚠️ Geolocation not available
+                        ⚠️ {t('geolocationNotSupported')}
                       </div>
                     )}
 
@@ -2470,13 +2468,13 @@ navigate('/order-success', {
                           height: '100%',
                           color: c.textMuted
                         }}>
-                          Loading...
+                          {t('loadingMap')}
                         </div>
                       ) : mapCenter ? (
                         <iframe
                           src={`https://www.openstreetmap.org/export/embed.html?bbox=${mapCenter.lng - 0.01}%2C${mapCenter.lat - 0.01}%2C${mapCenter.lng + 0.01}%2C${mapCenter.lat + 0.01}&marker=${mapCenter.lat}%2C${mapCenter.lng}`}
                           style={{ width: '100%', height: '100%', border: 'none' }}
-                          title="Location Map"
+                          title={t('locationMap') || "Location Map"}
                           loading="lazy"
                         />
                       ) : null}
@@ -2515,7 +2513,7 @@ navigate('/order-success', {
                     e.target.style.boxShadow = 'none'
                   }}
                 >
-                  <span>✓</span> Save
+                  <span>✓</span> {t('save')}
                 </button>
               </form>
             )}
@@ -2533,7 +2531,7 @@ navigate('/order-success', {
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '1rem' }}>
                   <h4 style={{ margin: 0, color: c.success, fontWeight: '800', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span>✓</span> Delivery Info
+                    <span>✓</span> {t('deliveryInformation')}
                   </h4>
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button
@@ -2555,7 +2553,7 @@ navigate('/order-success', {
                         e.target.style.color = c.success
                       }}
                     >
-                      Edit
+                      {t('edit')}
                     </button>
                     <button
                       onClick={handleOpenMapEditor}
@@ -2576,7 +2574,7 @@ navigate('/order-success', {
                         e.target.style.color = c.secondary
                       }}
                     >
-                      🗺️ Location
+                      🗺️ {t('location')}
                     </button>
                   </div>
                 </div>
@@ -2586,7 +2584,10 @@ navigate('/order-success', {
                   <div>{deliveryInfo.email}</div>
                   {currency === 'EGP' && deliveryInfo.governorate && (
                     <div style={{ color: c.secondary, fontWeight: '700' }}>
-                      📍 {EGYPT_GOVERNORATES.find(g => g.id === deliveryInfo.governorate)?.name || deliveryInfo.governorate}
+                      📍 {lang === 'ar' 
+                        ? (EGYPT_GOVERNORATES.find(g => g.id === deliveryInfo.governorate)?.nameAr || deliveryInfo.governorate)
+                        : (EGYPT_GOVERNORATES.find(g => g.id === deliveryInfo.governorate)?.name || deliveryInfo.governorate)
+                      }
                     </div>
                   )}
                   <div style={{ wordBreak: 'break-word' }}>{deliveryInfo.address}</div>
@@ -2606,8 +2607,8 @@ navigate('/order-success', {
               animation: 'slideInRight 0.7s ease-out'
             }}>
               <h4 style={{ margin: '0 0 1rem 0', color: c.textDark, fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                🎟️ Coupon
-                {appliedCoupon && <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: c.success, fontWeight: 700 }}>✓ Active</span>}
+                🎟️ {t('haveCoupon') || 'Coupon'}
+                {appliedCoupon && <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: c.success, fontWeight: 700 }}>✓ {t('active') || 'Active'}</span>}
               </h4>
               
               <div style={{ display: 'flex', gap: '8px', marginBottom: couponError || appliedCoupon ? '1rem' : 0 }}>
@@ -2619,11 +2620,11 @@ navigate('/order-success', {
                       setCouponInput(e.target.value.toUpperCase())
                       if (appliedCoupon && e.target.value.toUpperCase() !== appliedCoupon.code) {
                         setAppliedCoupon(null)
-                        contextSetAppliedCoupon(null)  // Sync with context
+                        contextSetAppliedCoupon(null)
                         setCouponError(null)
                       }
                     }}
-                    placeholder="Enter coupon code"
+                    placeholder={t('enterCouponCode') || "Enter coupon code"}
                     disabled={couponLoading}
                     style={{
                       width: '100%',
@@ -2671,13 +2672,13 @@ navigate('/order-success', {
                       whiteSpace: 'nowrap'
                     }}
                   >
-                    {couponLoading ? '⟳' : 'Apply'}
+                    {couponLoading ? '⟳' : t('apply')}
                   </button>
                 ) : (
                   <button
                     onClick={() => {
                       setAppliedCoupon(null)
-                      contextSetAppliedCoupon(null)  // Sync with context
+                      contextSetAppliedCoupon(null)
                       setCouponInput('')
                       setCouponError(null)
                     }}
@@ -2692,7 +2693,7 @@ navigate('/order-success', {
                       fontSize: '0.85rem'
                     }}
                   >
-                    Remove
+                    {t('remove') || 'Remove'}
                   </button>
                 )}
               </div>
@@ -2725,7 +2726,7 @@ navigate('/order-success', {
                 }}>
                   <span style={{ fontSize: '1.5rem' }}>🎉</span>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '0.85rem', color: c.textMuted }}>Discount applied</div>
+                    <div style={{ fontSize: '0.85rem', color: c.textMuted }}>{t('discountApplied') || 'Discount applied'}</div>
                     <div style={{ fontSize: '1.1rem', fontWeight: 800, color: c.success }}>
                       -{currencyConfig.symbol} {appliedCoupon.amount}
                     </div>
@@ -2739,7 +2740,7 @@ navigate('/order-success', {
                 color: c.textMuted,
                 fontStyle: 'italic'
               }}>
-                * Enter a different code above to replace, or remove to clear
+                * {t('couponInstructions') || 'Enter a different code above to replace, or remove to clear'}
               </p>
             </div>
 
@@ -2762,7 +2763,7 @@ navigate('/order-success', {
                 alignItems: 'center',
                 gap: '8px'
               }}>
-                💳 Payment Method
+                💳 {t('paymentMethod') || 'Payment Method'}
               </h4>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -2789,8 +2790,8 @@ navigate('/order-success', {
                       style={{ width: '20px', height: '20px', accentColor: c.success }}
                     />
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: '800', color: c.textDark }}>Cash on Delivery</div>
-                      <div style={{ fontSize: '0.8rem', color: c.textMuted }}>Pay when you receive</div>
+                      <div style={{ fontWeight: '800', color: c.textDark }}>{t('cashOnDelivery') || 'Cash on Delivery'}</div>
+                      <div style={{ fontSize: '0.8rem', color: c.textMuted }}>{t('payWhenReceive') || 'Pay when you receive'}</div>
                     </div>
                     <span style={{ fontSize: '1.5rem' }}>💵</span>
                   </label>
@@ -2820,9 +2821,9 @@ navigate('/order-success', {
                     style={{ width: '20px', height: '20px', accentColor: c.secondary }}
                   />
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: '800', color: c.textMuted }}>Credit/Debit Card</div>
+                    <div style={{ fontWeight: '800', color: c.textMuted }}>{t('creditDebitCard') || 'Credit/Debit Card'}</div>
                     <div style={{ fontSize: '0.8rem', color: c.textMuted }}>
-                      Temporarily unavailable
+                      {t('temporarilyUnavailable') || 'Temporarily unavailable'}
                     </div>
                   </div>
                   <span style={{ fontSize: '1.5rem', opacity: 0.5 }}>💳</span>
@@ -2842,7 +2843,7 @@ navigate('/order-success', {
               animation: 'slideInRight 0.8s ease-out'
             }}>
               <h4 style={{ margin: '0 0 1.25rem 0', color: c.textDark, fontWeight: '800', fontSize: '1.1rem' }}>
-                💰 Order Summary
+                💰 {t('orderSummary')}
               </h4>
               <div style={{
                 display: 'flex',
@@ -2855,24 +2856,24 @@ navigate('/order-success', {
                 borderBottomColor: c.border
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: c.textMuted, fontSize: '0.9rem', fontWeight: '600' }}>
-                  <span>Subtotal</span>
+                  <span>{t('subtotal')}</span>
                   <span>{formatPrice(totalPrice)}</span>
                 </div>
                 {discountAmount > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', color: c.success, fontSize: '0.9rem', fontWeight: '800', animation: 'slideDown 0.4s ease-out' }}>
-                    <span>💚 Discount</span>
+                    <span>💚 {t('discount')}</span>
                     <span>-{formatPrice(discountAmount)}</span>
                   </div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: c.textMuted, fontSize: '0.9rem', fontWeight: '600' }}>
-                  <span>Shipping</span>
+                  <span>{t('shipping')}</span>
                   <span style={{ 
                     color: shippingDetails.isFree ? c.success : c.textDark, 
                     fontWeight: '800',
                     animation: shippingDetails.isFree ? 'badgePulse 2s ease-in-out infinite' : 'none'
                   }}>
                     {shippingDetails.isFree 
-                      ? `Free 🎉` 
+                      ? `${t('free')} 🎉` 
                       : formatPrice(shippingCost)
                     }
                   </span>
@@ -2884,7 +2885,10 @@ navigate('/order-success', {
                     textAlign: 'right',
                     marginTop: '-4px'
                   }}>
-                    📍 {EGYPT_GOVERNORATES.find(g => g.id === deliveryInfo.governorate)?.name || deliveryInfo.governorate}
+                    📍 {lang === 'ar' 
+                      ? (EGYPT_GOVERNORATES.find(g => g.id === deliveryInfo.governorate)?.nameAr || deliveryInfo.governorate)
+                      : (EGYPT_GOVERNORATES.find(g => g.id === deliveryInfo.governorate)?.name || deliveryInfo.governorate)
+                    }
                   </div>
                 )}
               </div>
@@ -2913,7 +2917,7 @@ navigate('/order-success', {
                   marginBottom: '1.25rem',
                   animation: 'fadeInUp 0.6s ease-out'
                 }}>
-                  Add {formatPrice(currencyConfig.freeShippingThreshold - totalPrice)} more for free shipping!
+                  {t('addMoreForFreeShipping', { amount: formatPrice(currencyConfig.freeShippingThreshold - totalPrice) }) || `Add ${formatPrice(currencyConfig.freeShippingThreshold - totalPrice)} more for free shipping!`}
                 </p>
               )}
 
@@ -2927,7 +2931,7 @@ navigate('/order-success', {
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px'
               }}>
-                <span>Total:</span>
+                <span>{t('total')}:</span>
                 <span style={{ color: c.secondary }}>{formatPrice(finalPrice)}</span>
               </div>
 
@@ -2972,12 +2976,12 @@ navigate('/order-success', {
                    (currency === 'EGP' && minimumOrderAmount > 0 && totalPrice < minimumOrderAmount) ? '💰' : 
                    '💳'}
                 </span>
-                {isProcessing ? 'Processing' : 
-                 !hasDeliveryInfo ? 'Enter Delivery Info' : 
-                 Object.keys(stockErrors).length > 0 ? 'Resolve Stock Issues' : 
+                {isProcessing ? t('processing') : 
+                 !hasDeliveryInfo ? t('completeDeliveryInfo') : 
+                 Object.keys(stockErrors).length > 0 ? t('resolveStockIssues') : 
                  (currency === 'EGP' && minimumOrderAmount > 0 && totalPrice < minimumOrderAmount) ? 
-                   `Min Order: ${formatPrice(minimumOrderAmount)}` : 
-                 `Checkout (${currencyConfig.code})`}
+                   `${t('minOrder') || 'Min Order'}: ${formatPrice(minimumOrderAmount)}` : 
+                 `${t('checkout')} (${currencyConfig.code})`}
               </button>
 
               {!canCheckout && (
@@ -2994,11 +2998,11 @@ navigate('/order-success', {
                   borderLeftStyle: 'solid',
                   borderLeftColor: c.danger
                 }}>
-                  {!hasDeliveryInfo ? 'Complete delivery info (including governorate)' : 
-                   Object.keys(stockErrors).length > 0 ? 'Adjust quantities before checkout' :
+                  {!hasDeliveryInfo ? t('pleaseCompleteDeliveryInfo') : 
+                   Object.keys(stockErrors).length > 0 ? t('adjustQuantitiesBeforeCheckout') :
                    (currency === 'EGP' && minimumOrderAmount > 0 && totalPrice < minimumOrderAmount) ? 
-                     `Minimum order amount is ${formatPrice(minimumOrderAmount)}. Add ${formatPrice(minimumOrderAmount - totalPrice)} more.` :
-                   'Cannot proceed with checkout'}
+                     `${t('minimumOrderRequired')}: ${formatPrice(minimumOrderAmount)}. ${t('add')} ${formatPrice(minimumOrderAmount - totalPrice)} ${t('more')}.` :
+                   t('cannotProceed')}
                 </p>
               )}
             </div>
