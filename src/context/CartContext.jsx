@@ -12,6 +12,8 @@ const SET_ERROR = 'SET_ERROR'
 const CLEAR_ERROR = 'CLEAR_ERROR'
 const SET_DELIVERY_INFO = 'SET_DELIVERY_INFO'
 const CLEAR_DELIVERY_INFO = 'CLEAR_DELIVERY_INFO'
+const SET_APPLIED_COUPON = 'SET_APPLIED_COUPON'  // ADDED
+const CLEAR_APPLIED_COUPON = 'CLEAR_APPLIED_COUPON'  // ADDED
 
 const cartReducer = (state, action) => {
   switch (action.type) {
@@ -19,13 +21,25 @@ const cartReducer = (state, action) => {
       return {
         ...state,
         deliveryInfo: action.payload
-      };
+      }
     
     case CLEAR_DELIVERY_INFO:
       return {
         ...state,
         deliveryInfo: null
-      };
+      }
+
+    case SET_APPLIED_COUPON:  // ADDED
+      return {
+        ...state,
+        appliedCoupon: action.payload
+      }
+
+    case CLEAR_APPLIED_COUPON:  // ADDED
+      return {
+        ...state,
+        appliedCoupon: null
+      }
       
     case ADD_ITEM: {
       const { product, quantity = 1 } = action.payload
@@ -98,7 +112,8 @@ const cartReducer = (state, action) => {
       return { 
         ...state, 
         items: [],
-        error: null 
+        error: null,
+        appliedCoupon: null  // Also clear coupon when cart is cleared
       }
       
     case SET_ERROR:
@@ -122,33 +137,43 @@ export function CartProvider({ children }) {
   const [cart, dispatch] = useReducer(cartReducer, {
     items: [],
     error: null,
-    deliveryInfo: null
+    deliveryInfo: null,
+    appliedCoupon: null  // ADDED: Initialize coupon in state
   })
 
-  // Applied coupon state with localStorage persistence
-  const [appliedCoupon, setAppliedCoupon] = useState(() => {
+  // FIXED: Use useEffect for localStorage operations (side effects)
+  const [appliedCoupon, setAppliedCouponState] = useState(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('appliedCoupon')
-      return saved ? JSON.parse(saved) : null
+      try {
+        const saved = localStorage.getItem('appliedCoupon')
+        return saved ? JSON.parse(saved) : null
+      } catch (e) {
+        console.error('Error parsing saved coupon:', e)
+        return null
+      }
     }
     return null
   })
 
-  // Persist coupon to localStorage
+  // Persist coupon to localStorage and sync with reducer
   useEffect(() => {
     if (appliedCoupon) {
       localStorage.setItem('appliedCoupon', JSON.stringify(appliedCoupon))
+      dispatch({ type: SET_APPLIED_COUPON, payload: appliedCoupon })
     } else {
       localStorage.removeItem('appliedCoupon')
+      dispatch({ type: CLEAR_APPLIED_COUPON })
     }
   }, [appliedCoupon])
 
-  // Coupon actions
-  const clearAppliedCoupon = useCallback(() => {
-    setAppliedCoupon(null)
+  const setAppliedCoupon = useCallback((coupon) => {
+    setAppliedCouponState(coupon)
   }, [])
 
-  // ... rest of your cart actions (addToCart, etc.)
+  const clearAppliedCoupon = useCallback(() => {
+    setAppliedCouponState(null)
+  }, [])
+
   const addToCart = useCallback((product, quantity = 1) => {
     if (!product) {
       dispatch({ 
@@ -218,7 +243,7 @@ export function CartProvider({ children }) {
 
   const clearCart = useCallback(() => {
     dispatch({ type: CLEAR_CART })
-    clearAppliedCoupon() // Also clear coupon when cart is cleared
+    clearAppliedCoupon()
   }, [clearAppliedCoupon])
 
   const clearError = useCallback(() => {
@@ -226,12 +251,12 @@ export function CartProvider({ children }) {
   }, [])
 
   const setDeliveryInfo = useCallback((info) => {
-    dispatch({ type: SET_DELIVERY_INFO, payload: info });
-  }, []);
+    dispatch({ type: SET_DELIVERY_INFO, payload: info })
+  }, [])
 
   const clearDeliveryInfo = useCallback(() => {
-    dispatch({ type: CLEAR_DELIVERY_INFO });
-  }, []);
+    dispatch({ type: CLEAR_DELIVERY_INFO })
+  }, [])
 
   const validateCart = useCallback((products) => {
     const invalidItems = []
@@ -271,7 +296,7 @@ export function CartProvider({ children }) {
         totalPrice,
         error: cart.error,
         deliveryInfo: cart.deliveryInfo,
-        appliedCoupon,
+        appliedCoupon,  // Now from local state, synced with reducer
         setAppliedCoupon,
         clearAppliedCoupon,
         addToCart,
