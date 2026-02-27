@@ -879,20 +879,34 @@ useEffect(() => {
     clearDeliveryInfo()
     
     // Navigate with order data in state
-    navigate('/order-success', { 
-      state: { 
-        orderId,
-        orderData: {
-          totalPrice: orderData.totalPrice,
-          subtotal: orderData.subtotal,
-          discount: orderData.discount,
-          shippingCost: orderData.shippingCost,
-          currency: orderData.currency,
-          paymentMethod: orderData.paymentMethod,
-          items: orderData.items
-        }
-      } 
-    })
+    // In CartPage.jsx handleCheckout, update the navigation:
+navigate('/order-success', { 
+  state: { 
+    orderId,
+    orderData: {
+      totalPrice: calculatedFinalPrice,
+      subtotal: totalPrice,
+      discount: discountAmount,
+      shippingCost: calculatedShipping,
+      currency: currencyConfig.code,
+      paymentMethod: paymentMethod === 'cod' ? 'Cash on Delivery' : 'Card (Kashier)',
+      // ADD THESE STATUS FIELDS
+      status: 'pending', // or 'awaiting_payment' for card
+      paymentStatus: paymentMethod === 'cod' ? 'pending' : 'awaiting_payment',
+      items: items.map(item => ({
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity || 1
+      })),
+      customerName: deliveryInfo.name,
+      customerEmail: deliveryInfo.email,
+      customerPhone: deliveryInfo.phone,
+      governorate: currency === 'EGP' ? deliveryInfo.governorate : null
+    },
+    securityToken: orderId.split('_')[1]
+  } 
+})
     
   } catch (error) {
     console.error('Checkout error:', error)
