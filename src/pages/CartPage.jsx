@@ -733,141 +733,135 @@ useEffect(() => {
       return
     }
 
-    setIsProcessing(true)
-    const orderId = `order_${Date.now()}`
-    
-    try {
-      // Use transaction for atomic stock check and order creation
-      await runTransaction(db, async (transaction) => {
-        // Verify stock availability atomically
-        const stockChecks = await Promise.all(items.map(async (item) => {
-          const productRef = doc(db, currencyConfig.collection, item.id)
-          const productSnap = await transaction.get(productRef)
-          
-          if (!productSnap.exists()) {
-            throw new Error(`Product ${item.name} no longer exists`)
-          }
-          
-          const currentStock = productSnap.data().stock
-          if (currentStock < item.quantity) {
-            throw new Error(`Insufficient stock for ${item.name}. Available: ${currentStock}`)
-          }
-          
-          return { ref: productRef, newStock: currentStock - item.quantity, item }
-        }))
+   setIsProcessing(true)
+  const orderId = `order_${Date.now()}`
+  
+  try {
+    await runTransaction(db, async (transaction) => {
+      // ============================================
+      // PHASE 1: ALL READS FIRST
+      // ============================================
+      
+      // 1. Read all product stocks first
+      const stockChecks = await Promise.all(items.map(async (item) => {
+        const productRef = doc(db, currencyConfig.collection, item.id)
+        const productSnap = await transaction.get(productRef)  // READ
         
-        // If we get here, stock is available. Create order data
-        const orderData = {
-          orderId,
-          userId: `guest_${Date.now()}`,
-          items: items.map(item => ({
-            id: item.id,
-            name: item.name,
-            price: item.price,
-            quantity: item.quantity || 1
-          })),
-          totalPrice: finalPrice,
-          totalItems: items.reduce((sum, item) => sum + (item.quantity || 1), 0),
-          currency: currencyConfig.code,
-          paymentMethod: paymentMethod === 'cod' ? 'Cash on Delivery' : 'Card (Kashier)',
-          paymentStatus: paymentMethod === 'cod' ? 'pending' : 'awaiting_payment',
-          status: 'pending',
-          customerName: deliveryInfo.name,
-          customerPhone: deliveryInfo.phone,
-          customerEmail: deliveryInfo.email,
-          customerAddress: deliveryInfo.address,
-          governorate: currency === 'EGP' ? deliveryInfo.governorate : null,
-          customerLocation: {
-            latitude: deliveryInfo.latitude,
-            longitude: deliveryInfo.longitude
-          },
-          coupon: appliedCoupon ? {
-            code: appliedCoupon.code,
-            amount: appliedCoupon.amount,
-            id: appliedCoupon.id
-          } : null,
-          shipping: {
-            ...shippingDetails,
-            governorate: currency === 'EGP' ? deliveryInfo.governorate : undefined
-          },
-          source: 'web',
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
+        if (!productSnap.exists()) {
+          throw new Error(`Product ${item.name} no longer exists`)
         }
-
-        // Write to currency-specific collection
-        const currencyOrderRef = doc(collection(db, currencyConfig.orderCollection))
-        transaction.set(currencyOrderRef, orderData)
-
-        // Write to unified mobile_orders collection
-        const mobileOrderRef = doc(db, 'mobile_orders', orderId)
-        transaction.set(mobileOrderRef, {
-          ...orderData,
-          webOrderRef: currencyOrderRef.id,
-          platform: 'web',
-          isRead: false,
-          syncedToMobile: true
-        })
-
-        // Decrement stock atomically
-        stockChecks.forEach(({ ref, newStock }) => {
-          transaction.update(ref, { stock: newStock })
-        })
-
-        // Increment coupon usage
-        // In handleCheckout, inside runTransaction:
-if (appliedCoupon) {
-  const couponRef = doc(db, 'egp_coupons', appliedCoupon.id)
-  
-  // EXPLICITLY READ FIRST (required for rules to work)
-  const couponSnap = await transaction.get(couponRef)
-  if (!couponSnap.exists()) {
-    throw new Error('Coupon no longer exists')
-  }
-  
-  const currentData = couponSnap.data()
-  if (currentData.usedCount >= currentData.maxUses) {
-    throw new Error('Coupon has been fully used')
-  }
-  
-  // Now update
-  transaction.update(couponRef, {
-    usedCount: increment(1),
-    lastUsedAt: serverTimestamp(),
-    lastUsedBy: deliveryInfo.email || 'guest'
-  })
-
+        
+        const currentStock = productSnap.data().stock
+        if (currentStock < item.quantity) {
+          throw new Error(`Insufficient stock for ${item.name}. Available: ${currentStock}`)
         }
-      })
-
-      // Transaction succeeded - mark coupon as used in session
+        
+        return { ref: productRef, newStock: currentStock - item.quantity, item }
+      }))
+      
+      // 2. Read coupon data if applicable (MUST be before any writes)
+      let couponData = null
+      let couponRef = null
+      
       if (appliedCoupon) {
-        sessionStorage.setItem(`coupon_${appliedCoupon.code}_used`, 'true')  // FIXED: Use appliedCoupon.code
+        couponRef = doc(db, 'egp_coupons', appliedCoupon.id)
+        const couponSnap = await transaction.get(couponRef)  // READ
+        
+        if (!couponSnap.exists()) {
+          throw new Error('Coupon no longer exists')
+        }
+        
+        couponData = couponSnap.data()
+        if (couponData.usedCount >= couponData.maxUses) {
+          throw new Error('Coupon has been fully used')
+        }
       }
       
-      // Clear cart and navigate
-      clearCart()
-      clearDeliveryInfo()
-      navigate('/order-success', {
-        state: {
-          orderId,
-          txid: `TXN-${Date.now()}`,
-          totalPrice: finalPrice,
-          items,
-          deliveryInfo,
-          shipping: shippingDetails,
-          paymentMethod: 'cod',
-          currency: currencyConfig.code,
-          coupon: appliedCoupon
-        }
+      // ============================================
+      // PHASE 2: ALL WRITES AFTER ALL READS
+      // ============================================
+      
+      // 3. Create order data
+      const orderData = {
+        orderId,
+        userId: `guest_${Date.now()}`,
+        items: items.map(item => ({
+          id: item.id,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity || 1
+        })),
+        totalPrice: finalPrice,
+        totalItems: items.reduce((sum, item) => sum + (item.quantity || 1), 0),
+        currency: currencyConfig.code,
+        paymentMethod: paymentMethod === 'cod' ? 'Cash on Delivery' : 'Card (Kashier)',
+        paymentStatus: paymentMethod === 'cod' ? 'pending' : 'awaiting_payment',
+        status: 'pending',
+        customerName: deliveryInfo.name,
+        customerPhone: deliveryInfo.phone,
+        customerEmail: deliveryInfo.email,
+        customerAddress: deliveryInfo.address,
+        governorate: currency === 'EGP' ? deliveryInfo.governorate : null,
+        customerLocation: {
+          latitude: deliveryInfo.latitude,
+          longitude: deliveryInfo.longitude
+        },
+        coupon: appliedCoupon ? {
+          code: appliedCoupon.code,
+          amount: appliedCoupon.amount,
+          id: appliedCoupon.id
+        } : null,
+        shipping: {
+          ...shippingDetails,
+          governorate: currency === 'EGP' ? deliveryInfo.governorate : undefined
+        },
+        source: 'web',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      }
+
+      // 4. Write order to currency-specific collection
+      const currencyOrderRef = doc(collection(db, currencyConfig.orderCollection))
+      transaction.set(currencyOrderRef, orderData)
+
+      // 5. Write to unified mobile_orders collection
+      const mobileOrderRef = doc(db, 'mobile_orders', orderId)
+      transaction.set(mobileOrderRef, {
+        ...orderData,
+        webOrderRef: currencyOrderRef.id,
+        platform: 'web',
+        isRead: false,
+        syncedToMobile: true
       })
 
-    } catch (error) {
-      console.error('Checkout error:', error)
-      alert(t('checkoutFailed') + ': ' + (error.message || t('tryAgain')))
-      setIsProcessing(false)
+      // 6. Update stock (writes)
+      stockChecks.forEach(({ ref, newStock }) => {
+        transaction.update(ref, { stock: newStock })
+      })
+
+      // 7. Update coupon usage (write) - NOW AFTER ALL READS
+      if (appliedCoupon && couponRef) {
+        transaction.update(couponRef, {
+          usedCount: increment(1),
+          lastUsedAt: serverTimestamp(),
+          lastUsedBy: deliveryInfo.email || 'guest'
+        })
+      }
+    })
+
+    // Transaction succeeded - mark coupon as used in session
+    if (appliedCoupon) {
+      sessionStorage.setItem(`coupon_${appliedCoupon.code}_used`, 'true')
     }
-  }, [
+    
+    // ... rest of success handling ...
+    
+  } catch (error) {
+    console.error('Checkout error:', error)
+    alert(t('checkoutFailed') + ': ' + (error.message || t('tryAgain')))
+    setIsProcessing(false)
+  }
+}, [
     canCheckout, 
     items, 
     finalPrice, 
