@@ -1412,7 +1412,6 @@ export default function CartPage() {
         marginBottom: '2rem',
         color: c.warning,
         animation: 'slideDown 0.6s cubic-bezier(0.23, 1, 0.320, 1)',
-        transform: `translateY(${scrollY * 0.05}px)`
       }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
           <span style={{ fontSize: '1.3rem', flexShrink: 0 }}>⚠️</span>

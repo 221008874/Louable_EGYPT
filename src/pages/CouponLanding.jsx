@@ -1,3 +1,4 @@
+// src/pages/CouponLanding.jsx
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { db } from '../services/firebase'
@@ -57,61 +58,74 @@ export default function CouponLanding() {
     const validateCoupon = async () => {
       try {
         // Check session first
-        const sessionApplied = sessionStorage.getItem(`coupon_${code}_used`);
+        const sessionApplied = sessionStorage.getItem(`coupon_${code?.toUpperCase()}_used`)
         if (sessionApplied) {
-          setAlreadyApplied(true);
-          setLoading(false);
-          return;
+          setAlreadyApplied(true)
+          setLoading(false)
+          return
+        }
+
+        if (!code) {
+          setError('No coupon code provided')
+          setLoading(false)
+          return
         }
 
         // Query with BOTH filters to minimize data exposure
-        const couponsRef = collection(db, 'egp_coupons');
+        const couponsRef = collection(db, 'egp_coupons')
         const q = query(
           couponsRef, 
           where('code', '==', code.toUpperCase()),
           where('isActive', '==', true),
           limit(1)
-        );
+        )
         
-        const snapshot = await getDocs(q);
+        const snapshot = await getDocs(q)
 
         if (snapshot.empty) {
-          setError('Invalid coupon code');
-          setLoading(false);
-          return;
+          setError('Invalid coupon code')
+          setLoading(false)
+          return
         }
 
-        const couponDoc = snapshot.docs[0];
-        const couponData = couponDoc.data();
+        const couponDoc = snapshot.docs[0]
+        const couponData = couponDoc.data()
 
         // CRITICAL: Double-check everything client-side
-        const now = new Date();
-        const expiresAt = couponData.expiresAt?.toDate?.() || new Date(couponData.expiresAt);
+        const now = new Date()
+        const expiresAt = couponData.expiresAt?.toDate?.() || new Date(couponData.expiresAt)
         
         // Verify all conditions (defense in depth)
         if (!couponData.isActive) {
-          setError('This coupon is no longer active');
-          setLoading(false);
-          return;
+          setError('This coupon is no longer active')
+          setLoading(false)
+          return
         }
 
         if (expiresAt < now) {
-          setError('This coupon has expired');
-          setLoading(false);
-          return;
+          setError('This coupon has expired')
+          setLoading(false)
+          return
         }
 
         if (couponData.usedCount >= couponData.maxUses) {
-          setError('This coupon has reached its usage limit');
-          setLoading(false);
-          return;
+          setError('This coupon has reached its usage limit')
+          setLoading(false)
+          return
         }
 
         // Additional security: verify the code matches exactly
         if (couponData.code !== code.toUpperCase()) {
-          setError('Invalid coupon code');
-          setLoading(false);
-          return;
+          setError('Invalid coupon code')
+          setLoading(false)
+          return
+        }
+
+        // FIXED: Check currency compatibility
+        if (couponData.currency && couponData.currency !== 'EGP') {
+          setError(`This coupon is only valid for ${couponData.currency} currency`)
+          setLoading(false)
+          return
         }
 
         // Success - set coupon
@@ -121,33 +135,31 @@ export default function CouponLanding() {
           amount: couponData.amount,
           currency: couponData.currency || 'EGP',
           expiresAt: expiresAt.toISOString()
-        };
+        }
 
         setCoupon({
           id: couponDoc.id,
           ...couponData,
           expiresAt: expiresAt
-        });
+        })
 
         // Store in context (persists to localStorage)
-        setAppliedCoupon(couponToApply);
+        setAppliedCoupon(couponToApply)
 
         // Store for cart auto-apply
-        sessionStorage.setItem('prefillCouponCode', couponData.code);
-        sessionStorage.setItem('autoApplyCoupon', JSON.stringify(couponToApply));
+        sessionStorage.setItem('prefillCouponCode', couponData.code)
+        sessionStorage.setItem('autoApplyCoupon', JSON.stringify(couponToApply))
 
-        setLoading(false);
+        setLoading(false)
       } catch (err) {
-        console.error('Coupon validation error:', err);
-        setError('Failed to validate coupon. Please try again.');
-        setLoading(false);
+        console.error('Coupon validation error:', err)
+        setError('Failed to validate coupon. Please try again.')
+        setLoading(false)
       }
-    };
-
-    if (code) {
-      validateCoupon();
     }
-  }, [code, setAppliedCoupon]);
+
+    validateCoupon()
+  }, [code, setAppliedCoupon])
 
   const handleContinueShopping = () => {
     navigate('/home', { state: { couponApplied: true, couponCode: code } })
@@ -305,7 +317,6 @@ export default function CouponLanding() {
         position: 'relative',
         overflow: 'hidden'
       }}>
-        {/* Success animation background */}
         <div style={{
           position: 'absolute',
           top: '-50%',
@@ -439,7 +450,7 @@ export default function CouponLanding() {
                   color: c.textDark,
                   border: `2px solid ${c.border}`,
                   borderRadius: '14px',
-                  fontWeight: 700,
+                  fontWeight:700,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
