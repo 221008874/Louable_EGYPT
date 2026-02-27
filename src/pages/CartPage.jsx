@@ -841,11 +841,14 @@ useEffect(() => {
 
       // 7. Update coupon usage (write) - NOW AFTER ALL READS
       if (appliedCoupon && couponRef) {
-        transaction.update(couponRef, {
-          usedCount: increment(1),
-          lastUsedAt: serverTimestamp(),
-          lastUsedBy: deliveryInfo.email || 'guest'
-        })
+        const newUsedCount = couponData.usedCount + 1
+const now = new Date()
+
+transaction.update(couponRef, {
+  usedCount: newUsedCount,  // Explicit number: 1
+  lastUsedAt: now,          // Explicit Date object
+  lastUsedBy: deliveryInfo.email || 'guest'
+})
       }
     })
 
