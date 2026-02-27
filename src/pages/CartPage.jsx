@@ -397,80 +397,47 @@ useEffect(() => {
   }, [currency])
 
   // ============ PRODUCT DETAILS FETCH ============
-  // Use caching and single batch fetch instead of individual gets
-useEffect(() => {
-  const fetchProductDetails = async () => {
-    if (items.length === 0) return;
-    
-    // Check cache first (localStorage or memory)
-    const cacheKey = `products_${currencyConfig.collection}`;
-    const cached = localStorage.getItem(cacheKey);
-    const cacheTime = localStorage.getItem(`${cacheKey}_time`);
-    const now = Date.now();
-    
-    // Use cache if less than 5 minutes old
-    if (cached && cacheTime && (now - parseInt(cacheTime)) < 300000) {
-      const parsed = JSON.parse(cached);
-      const relevant = {};
-      items.forEach(item => {
-        if (parsed[item.id]) relevant[item.id] = parsed[item.id];
-      });
-      if (Object.keys(relevant).length === items.length) {
-        setProductDetails(relevant);
-        validateStock(relevant, items);
-        return;
-      }
-    }
+  useEffect(() => {
+    const fetchProductDetails = async () => {
+      const details = {}
+      const errors = {}
 
-    // OPTIMIZATION: Use in() query for up to 10 items at once instead of individual reads [^4^]
-    // This reduces reads from N to 1 query (billed per document returned, not per query)
-    const itemIds = items.map(item => item.id);
-    const details = {};
-    const errors = {};
+      await Promise.all(items.map(async (item) => {
+        try {
+          const docRef = doc(db, currencyConfig.collection, item.id)
+          const docSnap = await getDoc(docRef)
 
-    try {
-      // Firestore 'in' queries support up to 10 values
-      const chunks = [];
-      for (let i = 0; i < itemIds.length; i += 10) {
-        chunks.push(itemIds.slice(i, i + 10));
-      }
+          if (docSnap.exists()) {
+            const data = docSnap.data()
+            details[item.id] = data
 
-      await Promise.all(chunks.map(async (chunk) => {
-        const q = query(
-          collection(db, currencyConfig.collection),
-          where('__name__', 'in', chunk)
-        );
-        const snapshot = await getDocs(q);
-        
-        snapshot.docs.forEach(doc => {
-          const data = doc.data();
-          details[doc.id] = data;
-          
-          const item = items.find(i => i.id === doc.id);
-          if (item && data.stock < item.quantity) {
-            errors[doc.id] = {
-              type: 'INSUFFICIENT_STOCK',
-              available: data.stock,
-              requested: item.quantity,
-              message: t('onlyAvailable', { count: data.stock })
-            };
+            if (data.stock < item.quantity) {
+              errors[item.id] = {
+                type: 'INSUFFICIENT_STOCK',
+                available: data.stock,
+                requested: item.quantity,
+                message: t('onlyAvailable', { count: data.stock })
+              }
+            }
+          } else {
+            errors[item.id] = {
+              type: 'PRODUCT_NOT_FOUND',
+              message: t('productNotAvailable')
+            }
           }
-        });
-      }));
+        } catch (err) {
+          console.error('Error fetching product:', err)
+        }
+      }))
 
-      // Update cache
-      localStorage.setItem(cacheKey, JSON.stringify(details));
-      localStorage.setItem(`${cacheKey}_time`, now.toString());
-
-      setProductDetails(details);
-      setStockErrors(errors);
-    } catch (err) {
-      console.error('Error fetching products:', err);
+      setProductDetails(details)
+      setStockErrors(errors)
     }
-  };
 
-  fetchProductDetails();
-}, [items, t, currencyConfig.collection]);
+    if (items.length > 0) {
+      fetchProductDetails()
+    }
+  }, [items, t, currencyConfig.collection])
 
   // ============ DERIVED STATE ============
   const hasDeliveryInfo = useMemo(() => {
@@ -755,149 +722,148 @@ useEffect(() => {
   const finalPrice = subtotal + shippingCost
 
   // ============ FIXED: Checkout with proper error handling and atomic operations ============
- // ============ OPTIMIZED: Use Batch Write Instead of Transaction ============
-// Only use transaction if you need to read-before-write (stock validation)
-// For order creation without stock validation, use batch write for better performance [^5^][^6^]
+  const handleCheckout = useCallback(async () => {
+    if (!canCheckout || Object.keys(stockErrors).length > 0) {
+      alert(t('resolveStockIssues') || 'Please resolve stock issues before checkout')
+      return
+    }
 
-// ============ OPTIMIZED CHECKOUT: Hybrid Approach ============
-// Uses Batch Write for performance but adds stock validation via pre-check
-// This maintains your logic while minimizing reads and fixing permissions
+    // Validate coupon currency matches order currency before final checkout
+    if (appliedCoupon && appliedCoupon.currency && appliedCoupon.currency !== 'EGP') {
+      alert('Coupon currency mismatch. Please remove coupon and try again.')
+      return
+    }
 
-const handleCheckout = useCallback(async () => {
-  if (!canCheckout || Object.keys(stockErrors).length > 0) {
-    alert(t('resolveStockIssues') || 'Please resolve stock issues before checkout');
-    return;
-  }
-
-  if (appliedCoupon && appliedCoupon.currency && appliedCoupon.currency !== 'EGP') {
-    alert('Coupon currency mismatch. Please remove coupon and try again.');
-    return;
-  }
-
-  setIsProcessing(true);
-  const orderId = `order_${Date.now()}`;
+   setIsProcessing(true)
+  const orderId = `order_${Date.now()}`
   
   try {
-    // OPTIMIZATION 1: Use productDetails cache instead of re-reading from Firestore
-    // This eliminates N reads since we already fetched products in useEffect
-    const stockValidation = items.every(item => {
-      const product = productDetails[item.id];
-      if (!product) return false; // Product not loaded yet
+    await runTransaction(db, async (transaction) => {
+      // ============================================
+      // PHASE 1: ALL READS FIRST
+      // ============================================
       
-      // Validate stock is sufficient (using cached data from productDetails)
-      return product.stock >= (item.quantity || 1);
-    });
+      // 1. Read all product stocks first
+      const stockChecks = await Promise.all(items.map(async (item) => {
+        const productRef = doc(db, currencyConfig.collection, item.id)
+        const productSnap = await transaction.get(productRef)  // READ
+        
+        if (!productSnap.exists()) {
+          throw new Error(`Product ${item.name} no longer exists`)
+        }
+        
+        const currentStock = productSnap.data().stock
+        if (currentStock < item.quantity) {
+          throw new Error(`Insufficient stock for ${item.name}. Available: ${currentStock}`)
+        }
+        
+        return { ref: productRef, newStock: currentStock - item.quantity, item }
+      }))
+      
+      // 2. Read coupon data if applicable (MUST be before any writes)
+      let couponData = null
+      let couponRef = null
+      
+      if (appliedCoupon) {
+        couponRef = doc(db, 'egp_coupons', appliedCoupon.id)
+        const couponSnap = await transaction.get(couponRef)  // READ
+        
+        if (!couponSnap.exists()) {
+          throw new Error('Coupon no longer exists')
+        }
+        
+        couponData = couponSnap.data()
+        if (couponData.usedCount >= couponData.maxUses) {
+          throw new Error('Coupon has been fully used')
+        }
+      }
+      
+      // ============================================
+      // PHASE 2: ALL WRITES AFTER ALL READS
+      // ============================================
+      
+      // 3. Create order data
+      const orderData = {
+        orderId,
+        userId: `guest_${Date.now()}`,
+        items: items.map(item => ({
+          id: item.id,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity || 1
+        })),
+        totalPrice: finalPrice,
+        totalItems: items.reduce((sum, item) => sum + (item.quantity || 1), 0),
+        currency: currencyConfig.code,
+        paymentMethod: paymentMethod === 'cod' ? 'Cash on Delivery' : 'Card (Kashier)',
+        paymentStatus: paymentMethod === 'cod' ? 'pending' : 'awaiting_payment',
+        status: 'pending',
+        customerName: deliveryInfo.name,
+        customerPhone: deliveryInfo.phone,
+        customerEmail: deliveryInfo.email,
+        customerAddress: deliveryInfo.address,
+        governorate: currency === 'EGP' ? deliveryInfo.governorate : null,
+        customerLocation: {
+          latitude: deliveryInfo.latitude,
+          longitude: deliveryInfo.longitude
+        },
+        coupon: appliedCoupon ? {
+          code: appliedCoupon.code,
+          amount: appliedCoupon.amount,
+          id: appliedCoupon.id
+        } : null,
+        shipping: {
+          ...shippingDetails,
+          governorate: currency === 'EGP' ? deliveryInfo.governorate : undefined
+        },
+        source: 'web',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      }
 
-    if (!stockValidation) {
-      alert('Some items are out of stock. Please refresh and try again.');
-      setIsProcessing(false);
-      return;
-    }
+      // 4. Write order to currency-specific collection
+      const currencyOrderRef = doc(collection(db, currencyConfig.orderCollection))
+      transaction.set(currencyOrderRef, orderData)
 
-    // OPTIMIZATION 2: Use writeBatch instead of runTransaction
-    // - 50% faster than transactions [^5^]
-    // - Works offline (better UX)
-    // - No read costs (only writes)
-    const batch = writeBatch(db);
-    
-    // Create order data (your exact logic preserved)
-    const orderData = {
-      orderId,
-      userId: `guest_${Date.now()}`,
-      items: items.map(item => ({
-        id: item.id,
-        name: item.name,
-        price: item.price,
-        quantity: item.quantity || 1
-      })),
-      totalPrice: finalPrice,
-      totalItems: items.reduce((sum, item) => sum + (item.quantity || 1), 0),
-      currency: currencyConfig.code,
-      paymentMethod: paymentMethod === 'cod' ? 'Cash on Delivery' : 'Card (Kashier)',
-      paymentStatus: paymentMethod === 'cod' ? 'pending' : 'awaiting_payment',
-      status: 'pending',
-      customerName: deliveryInfo.name,
-      customerPhone: deliveryInfo.phone,
-      customerEmail: deliveryInfo.email,
-      customerAddress: deliveryInfo.address,
-      governorate: currency === 'EGP' ? deliveryInfo.governorate : null,
-      customerLocation: {
-        latitude: deliveryInfo.latitude,
-        longitude: deliveryInfo.longitude
-      },
-      coupon: appliedCoupon ? {
-        code: appliedCoupon.code,
-        amount: appliedCoupon.amount,
-        id: appliedCoupon.id
-      } : null,
-      shipping: {
-        ...shippingDetails,
-        governorate: currency === 'EGP' ? deliveryInfo.governorate : undefined
-      },
-      source: 'web',
-      platform: 'web',  // CRITICAL for security rule
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    };
+      // 5. Write to unified mobile_orders collection
+      const mobileOrderRef = doc(db, 'mobile_orders', orderId)
+      transaction.set(mobileOrderRef, {
+        ...orderData,
+        webOrderRef: currencyOrderRef.id,
+        platform: 'web',
+        isRead: false,
+        syncedToMobile: true
+      })
 
-    // Write to currency-specific collection (your exact logic)
-    const currencyOrderRef = doc(collection(db, currencyConfig.orderCollection));
-    batch.set(currencyOrderRef, orderData);
+      // 6. Update stock (writes)
+      stockChecks.forEach(({ ref, newStock }) => {
+        transaction.update(ref, { stock: newStock })
+      })
 
-    // Write to mobile_orders (your exact logic)
-    const mobileOrderRef = doc(db, 'mobile_orders', orderId);
-    batch.set(mobileOrderRef, {
-      ...orderData,
-      webOrderRef: currencyOrderRef.id,
-      isRead: false,
-      syncedToMobile: true
-    });
+      // 7. Update coupon usage (write) - NOW AFTER ALL READS
+      if (appliedCoupon && couponRef) {
+        const newUsedCount = couponData.usedCount + 1
+const now = new Date()
 
-    // Update stock using FieldValue.increment (atomic, no read needed) [^1^]
-    // This is safe because we pre-validated using cached productDetails
-    items.forEach(item => {
-      const productRef = doc(db, currencyConfig.collection, item.id);
-      batch.update(productRef, {
-        stock: increment(-(item.quantity || 1))
-      });
-    });
+transaction.update(couponRef, {
+  usedCount: newUsedCount,
+  lastUsedAt: Timestamp.now(),
+  lastUsedBy: deliveryInfo.email || 'guest'
+})
+      }
+    })
 
-    // Update coupon if applied (your exact logic)
+    // Transaction succeeded - mark coupon as used in session
     if (appliedCoupon) {
-      const couponRef = doc(db, 'egp_coupons', appliedCoupon.id);
-      batch.update(couponRef, {
-        usedCount: increment(1),
-        lastUsedAt: serverTimestamp(),
-        lastUsedBy: deliveryInfo.email || 'guest'
-      });
-    }
-
-    // Commit all writes atomically
-    await batch.commit();
-
-    // Success handling (your exact logic)
-    if (appliedCoupon) {
-      sessionStorage.setItem(`coupon_${appliedCoupon.code}_used`, 'true');
+      sessionStorage.setItem(`coupon_${appliedCoupon.code}_used`, 'true')
     }
     
-    clearCart();
-    clearDeliveryInfo();
-    navigate('/order-success', { state: { orderId } });
-
+    // ... rest of success handling ...
+    
   } catch (error) {
-    console.error('Checkout error:', error);
-    
-    // Handle specific permission errors with better UX
-    if (error.code === 'permission-denied') {
-      console.error('Permission denied details:', error.message);
-      alert('Unable to complete order: Permission denied. Please contact support if this persists.');
-    } else if (error.message?.includes('stock')) {
-      alert('Some items are no longer available. Please review your cart.');
-    } else {
-      alert(t('checkoutFailed') + ': ' + (error.message || t('tryAgain')));
-    }
-    
-    setIsProcessing(false);
+    console.error('Checkout error:', error)
+    alert(t('checkoutFailed') + ': ' + (error.message || t('tryAgain')))
+    setIsProcessing(false)
   }
 }, [
     canCheckout, 
@@ -908,14 +874,13 @@ const handleCheckout = useCallback(async () => {
     shippingDetails, 
     paymentMethod, 
     stockErrors,
-    productDetails, // ADDED: needed for stock validation
     t,
     clearCart, 
     clearDeliveryInfo, 
     navigate,
     currencyConfig,
     currency
-  ]);
+  ])
 
   const handleQuantityUpdate = useCallback(async (item, newQuantity) => {
     if (newQuantity < 1) {
