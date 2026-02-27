@@ -1,5 +1,5 @@
 // src/context/CartContext.jsx
-import { createContext, useContext, useReducer, useCallback } from 'react'
+import { createContext, useContext, useReducer, useCallback, useState, useEffect } from 'react'
 
 const CartContext = createContext()
 
@@ -32,7 +32,6 @@ const cartReducer = (state, action) => {
       const existingItem = state.items.find(item => item.id === product.id)
       
       if (existingItem) {
-        // Check stock limit before updating
         const newQuantity = existingItem.quantity + quantity
         if (newQuantity > product.stock) {
           return {
@@ -73,7 +72,6 @@ const cartReducer = (state, action) => {
     case UPDATE_QUANTITY: {
       const { id, quantity, stock } = action.payload
       
-      // Validate against stock
       if (quantity > stock) {
         return {
           ...state,
@@ -91,7 +89,7 @@ const cartReducer = (state, action) => {
           item.id === id
             ? { ...item, quantity: Math.max(0, quantity) }
             : item
-        ).filter(item => item.quantity > 0), // Remove if quantity is 0
+        ).filter(item => item.quantity > 0),
         error: null
       }
     }
@@ -127,14 +125,31 @@ export function CartProvider({ children }) {
     deliveryInfo: null
   })
 
-  /**
-   * Add item to cart with stock validation
-   * @param {Object} product - Product to add
-   * @param {number} quantity - Quantity to add (default: 1)
-   * @returns {Object} { success: boolean, message?: string }
-   */
+  // Applied coupon state with localStorage persistence
+  const [appliedCoupon, setAppliedCoupon] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('appliedCoupon')
+      return saved ? JSON.parse(saved) : null
+    }
+    return null
+  })
+
+  // Persist coupon to localStorage
+  useEffect(() => {
+    if (appliedCoupon) {
+      localStorage.setItem('appliedCoupon', JSON.stringify(appliedCoupon))
+    } else {
+      localStorage.removeItem('appliedCoupon')
+    }
+  }, [appliedCoupon])
+
+  // Coupon actions
+  const clearAppliedCoupon = useCallback(() => {
+    setAppliedCoupon(null)
+  }, [])
+
+  // ... rest of your cart actions (addToCart, etc.)
   const addToCart = useCallback((product, quantity = 1) => {
-    // Validation 1: Check if product exists
     if (!product) {
       dispatch({ 
         type: SET_ERROR, 
@@ -143,7 +158,6 @@ export function CartProvider({ children }) {
       return { success: false, message: 'Invalid product' }
     }
 
-    // Validation 2: Check if product is in stock
     if (!product.stock || product.stock <= 0) {
       dispatch({ 
         type: SET_ERROR, 
@@ -153,14 +167,9 @@ export function CartProvider({ children }) {
           productId: product.id
         }
       })
-      return { 
-        success: false, 
-        message: 'Out of stock',
-        type: 'OUT_OF_STOCK'
-      }
+      return { success: false, message: 'Out of stock', type: 'OUT_OF_STOCK' }
     }
 
-    // Validation 3: Check if requested quantity exceeds stock
     if (quantity > product.stock) {
       dispatch({ 
         type: SET_ERROR, 
@@ -170,15 +179,9 @@ export function CartProvider({ children }) {
           productId: product.id
         }
       })
-      return { 
-        success: false, 
-        message: `Only ${product.stock} available`,
-        type: 'INSUFFICIENT_STOCK',
-        availableStock: product.stock
-      }
+      return { success: false, message: `Only ${product.stock} available`, type: 'INSUFFICIENT_STOCK', availableStock: product.stock }
     }
 
-    // Validation 4: Check cart total against stock
     const existingItem = cart.items.find(item => item.id === product.id)
     const currentCartQuantity = existingItem ? existingItem.quantity : 0
     
@@ -190,87 +193,46 @@ export function CartProvider({ children }) {
       
       dispatch({ 
         type: SET_ERROR, 
-        payload: { 
-          type: 'CART_LIMIT', 
-          message,
-          productId: product.id,
-          canAdd
-        }
+        payload: { type: 'CART_LIMIT', message, productId: product.id, canAdd }
       })
-      return { 
-        success: false, 
-        message,
-        type: 'CART_LIMIT',
-        canAdd,
-        currentInCart: currentCartQuantity,
-        stock: product.stock
-      }
+      return { success: false, message, type: 'CART_LIMIT', canAdd, currentInCart: currentCartQuantity, stock: product.stock }
     }
 
-    // All validations passed - add to cart
-    dispatch({ 
-      type: ADD_ITEM, 
-      payload: { product, quantity }
-    })
-    
-    return { 
-      success: true, 
-      message: `Added ${quantity} × ${product.name} to cart`,
-      added: quantity,
-      totalInCart: currentCartQuantity + quantity
-    }
+    dispatch({ type: ADD_ITEM, payload: { product, quantity }})
+    return { success: true, message: `Added ${quantity} × ${product.name} to cart`, added: quantity, totalInCart: currentCartQuantity + quantity }
   }, [cart.items])
 
   const removeFromCart = useCallback((productId) => {
     dispatch({ type: REMOVE_ITEM, payload: { id: productId } })
   }, [])
 
-  /**
-   * Update quantity with stock validation
-   * @param {string} productId - Product ID
-   * @param {number} quantity - New quantity
-   * @param {number} stock - Available stock (passed from component)
-   */
   const updateQuantity = useCallback((productId, quantity, stock) => {
     if (quantity < 0) return
-    
-    // If quantity exceeds stock, dispatch will handle error
-    dispatch({ 
-      type: UPDATE_QUANTITY, 
-      payload: { id: productId, quantity, stock }
-    })
-    
-    // Return whether update was successful
+    dispatch({ type: UPDATE_QUANTITY, payload: { id: productId, quantity, stock }})
     const item = cart.items.find(i => i.id === productId)
     if (item && quantity > stock) {
-      return { 
-        success: false, 
-        message: `Only ${stock} available`,
-        maxAllowed: stock
-      }
+      return { success: false, message: `Only ${stock} available`, maxAllowed: stock }
     }
     return { success: true }
   }, [cart.items])
 
   const clearCart = useCallback(() => {
     dispatch({ type: CLEAR_CART })
-  }, [])
+    clearAppliedCoupon() // Also clear coupon when cart is cleared
+  }, [clearAppliedCoupon])
 
   const clearError = useCallback(() => {
     dispatch({ type: CLEAR_ERROR })
   }, [])
 
-  // Set delivery information
   const setDeliveryInfo = useCallback((info) => {
     dispatch({ type: SET_DELIVERY_INFO, payload: info });
   }, []);
 
-  // Clear delivery information
   const clearDeliveryInfo = useCallback(() => {
     dispatch({ type: CLEAR_DELIVERY_INFO });
   }, []);
 
-  // Validate entire cart against current stock (useful after page refresh)
   const validateCart = useCallback((products) => {
     const invalidItems = []
     const updatedItems = cart.items.map(item => {
@@ -280,41 +242,22 @@ export function CartProvider({ children }) {
         return null
       }
       if (currentProduct.stock < item.quantity) {
-        invalidItems.push({ 
-          ...item, 
-          reason: 'Stock reduced',
-          requested: item.quantity,
-          available: currentProduct.stock
-        })
+        invalidItems.push({ ...item, reason: 'Stock reduced', requested: item.quantity, available: currentProduct.stock })
         return { ...item, quantity: currentProduct.stock }
       }
       return item
     }).filter(Boolean)
 
     if (invalidItems.length > 0) {
-      // Update cart with corrected quantities
-      dispatch({ 
-        type: SET_ERROR,
-        payload: {
-          type: 'CART_VALIDATION',
-          message: `${invalidItems.length} item(s) updated due to stock changes`,
-          invalidItems
-        }
-      })
+      dispatch({ type: SET_ERROR, payload: { type: 'CART_VALIDATION', message: `${invalidItems.length} item(s) updated due to stock changes`, invalidItems }})
     }
-
     return { valid: invalidItems.length === 0, invalidItems }
   }, [cart.items])
 
-  // Get stock info for a specific product in cart
   const getCartStockInfo = useCallback((productId) => {
     const item = cart.items.find(i => i.id === productId)
     const quantity = item ? item.quantity : 0
-    return {
-      inCart: quantity,
-      canAddMore: (stock) => stock > quantity,
-      remaining: (stock) => Math.max(0, stock - quantity)
-    }
+    return { inCart: quantity, canAddMore: (stock) => stock > quantity, remaining: (stock) => Math.max(0, stock - quantity) }
   }, [cart.items])
 
   const totalItems = cart.items.reduce((sum, item) => sum + item.quantity, 0)
@@ -328,6 +271,9 @@ export function CartProvider({ children }) {
         totalPrice,
         error: cart.error,
         deliveryInfo: cart.deliveryInfo,
+        appliedCoupon,
+        setAppliedCoupon,
+        clearAppliedCoupon,
         addToCart,
         removeFromCart,
         updateQuantity,

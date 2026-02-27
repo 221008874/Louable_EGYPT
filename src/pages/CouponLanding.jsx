@@ -8,19 +8,18 @@ import {
   getDocs, 
   doc, 
   getDoc,
-  limit  // ← ADDED THIS IMPORT
+  limit
 } from 'firebase/firestore'
 import { useTheme } from '../context/ThemeContext'
 import { useCart } from '../context/CartContext'
 import { useLocation } from '../context/LocationContext'
-// Removed unused QRCode import
 
 export default function CouponLanding() {
   const { code } = useParams()
   const navigate = useNavigate()
   const { theme } = useTheme()
   const { currency } = useLocation()
-  const { items, totalPrice } = useCart()
+  const { items, totalPrice, setAppliedCoupon } = useCart()
   
   const [coupon, setCoupon] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -71,7 +70,7 @@ export default function CouponLanding() {
           couponsRef, 
           where('code', '==', code.toUpperCase()),
           where('isActive', '==', true),
-          limit(1)  // Now properly imported and working
+          limit(1)
         );
         
         const snapshot = await getDocs(q);
@@ -116,21 +115,26 @@ export default function CouponLanding() {
         }
 
         // Success - set coupon
+        const couponToApply = {
+          id: couponDoc.id,
+          code: couponData.code,
+          amount: couponData.amount,
+          currency: couponData.currency || 'EGP',
+          expiresAt: expiresAt.toISOString()
+        };
+
         setCoupon({
           id: couponDoc.id,
           ...couponData,
           expiresAt: expiresAt
         });
 
+        // Store in context (persists to localStorage)
+        setAppliedCoupon(couponToApply);
+
         // Store for cart auto-apply
         sessionStorage.setItem('prefillCouponCode', couponData.code);
-        sessionStorage.setItem('autoApplyCoupon', JSON.stringify({
-          id: couponDoc.id,
-          code: couponData.code,
-          amount: couponData.amount,
-          currency: couponData.currency || 'EGP',
-          expiresAt: expiresAt.toISOString()
-        }));
+        sessionStorage.setItem('autoApplyCoupon', JSON.stringify(couponToApply));
 
         setLoading(false);
       } catch (err) {
@@ -143,7 +147,8 @@ export default function CouponLanding() {
     if (code) {
       validateCoupon();
     }
-  }, [code]);
+  }, [code, setAppliedCoupon]);
+
   const handleContinueShopping = () => {
     navigate('/home', { state: { couponApplied: true, couponCode: code } })
   }
