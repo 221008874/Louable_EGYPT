@@ -127,6 +127,9 @@ export default function CartPage() {
 
   // ============ PAYMENT METHOD STATE ============
   const [paymentMethod, setPaymentMethod] = useState('cod')
+  // ============ cashe METHOD STATE ============
+
+
 
   // ============ FULL-SCREEN MAP EDITOR STATES ============
   const [showMapEditor, setShowMapEditor] = useState(false)
@@ -722,31 +725,44 @@ useEffect(() => {
   const finalPrice = subtotal + shippingCost
 
   // ============ FIXED: Checkout with proper error handling and atomic operations ============
-  const handleCheckout = useCallback(async () => {
-    if (!canCheckout || Object.keys(stockErrors).length > 0) {
-      alert(t('resolveStockIssues') || 'Please resolve stock issues before checkout')
-      return
-    }
+   const handleCheckout = useCallback(async () => {
+  if (!canCheckout || Object.keys(stockErrors).length > 0) {
+    alert(t('resolveStockIssues') || 'Please resolve stock issues before checkout')
+    return
+  }
 
-    // Validate coupon currency matches order currency before final checkout
-    if (appliedCoupon && appliedCoupon.currency && appliedCoupon.currency !== 'EGP') {
-      alert('Coupon currency mismatch. Please remove coupon and try again.')
-      return
-    }
+  // Validate coupon currency matches order currency before final checkout
+  if (appliedCoupon && appliedCoupon.currency && appliedCoupon.currency !== 'EGP') {
+    alert('Coupon currency mismatch. Please remove coupon and try again.')
+    return
+  }
 
-   setIsProcessing(true)
+  setIsProcessing(true)
   const orderId = `order_${Date.now()}`
   
+  // RECALCULATE FINAL PRICE HERE to ensure it's correct
+  const discountAmount = appliedCoupon ? appliedCoupon.amount : 0
+  const calculatedSubtotal = Math.max(0, totalPrice - discountAmount)
+  const calculatedShipping = shippingDetails.cost
+  const calculatedFinalPrice = calculatedSubtotal + calculatedShipping
+  
+  console.log('Checkout calculation:', {
+    totalPrice,
+    discountAmount,
+    calculatedSubtotal,
+    shipping: calculatedShipping,
+    finalPrice: calculatedFinalPrice,
+    appliedCoupon
+  })
+  
   try {
-    await runTransaction(db, async (transaction) => {
-      // ============================================
+    const orderData = await runTransaction(db, async (transaction) => {
       // PHASE 1: ALL READS FIRST
-      // ============================================
       
       // 1. Read all product stocks first
       const stockChecks = await Promise.all(items.map(async (item) => {
         const productRef = doc(db, currencyConfig.collection, item.id)
-        const productSnap = await transaction.get(productRef)  // READ
+        const productSnap = await transaction.get(productRef)
         
         if (!productSnap.exists()) {
           throw new Error(`Product ${item.name} no longer exists`)
@@ -760,13 +776,13 @@ useEffect(() => {
         return { ref: productRef, newStock: currentStock - item.quantity, item }
       }))
       
-      // 2. Read coupon data if applicable (MUST be before any writes)
+      // 2. Read coupon data if applicable
       let couponData = null
       let couponRef = null
       
       if (appliedCoupon) {
         couponRef = doc(db, 'egp_coupons', appliedCoupon.id)
-        const couponSnap = await transaction.get(couponRef)  // READ
+        const couponSnap = await transaction.get(couponRef)
         
         if (!couponSnap.exists()) {
           throw new Error('Coupon no longer exists')
@@ -778,11 +794,9 @@ useEffect(() => {
         }
       }
       
-      // ============================================
       // PHASE 2: ALL WRITES AFTER ALL READS
-      // ============================================
       
-      // 3. Create order data
+      // 3. Create order data object
       const orderData = {
         orderId,
         userId: `guest_${Date.now()}`,
@@ -792,7 +806,10 @@ useEffect(() => {
           price: item.price,
           quantity: item.quantity || 1
         })),
-        totalPrice: finalPrice,
+        totalPrice: calculatedFinalPrice, // USE RECALCULATED VALUE
+        subtotal: totalPrice,
+        discount: discountAmount,
+        shippingCost: calculatedShipping,
         totalItems: items.reduce((sum, item) => sum + (item.quantity || 1), 0),
         currency: currencyConfig.code,
         paymentMethod: paymentMethod === 'cod' ? 'Cash on Delivery' : 'Card (Kashier)',
@@ -835,30 +852,47 @@ useEffect(() => {
         syncedToMobile: true
       })
 
-      // 6. Update stock (writes)
+      // 6. Update stock
       stockChecks.forEach(({ ref, newStock }) => {
         transaction.update(ref, { stock: newStock })
       })
 
-      // 7. Update coupon usage (write) - NOW AFTER ALL READS
+      // 7. Update coupon usage
       if (appliedCoupon && couponRef) {
-        const newUsedCount = couponData.usedCount + 1
-const now = new Date()
-
-transaction.update(couponRef, {
-  usedCount: newUsedCount,
-  lastUsedAt: Timestamp.now(),
-  lastUsedBy: deliveryInfo.email || 'guest'
-})
+        transaction.update(couponRef, {
+          usedCount: increment(1),
+          lastUsedAt: Timestamp.now(),
+          lastUsedBy: deliveryInfo.email || 'guest'
+        })
       }
+      
+      return orderData // Return order data for use after transaction
     })
 
-    // Transaction succeeded - mark coupon as used in session
+    // Transaction succeeded
     if (appliedCoupon) {
       sessionStorage.setItem(`coupon_${appliedCoupon.code}_used`, 'true')
     }
     
-    // ... rest of success handling ...
+    // Clear cart and redirect WITH ORDER DATA
+    clearCart()
+    clearDeliveryInfo()
+    
+    // Navigate with order data in state
+    navigate('/order-success', { 
+      state: { 
+        orderId,
+        orderData: {
+          totalPrice: orderData.totalPrice,
+          subtotal: orderData.subtotal,
+          discount: orderData.discount,
+          shippingCost: orderData.shippingCost,
+          currency: orderData.currency,
+          paymentMethod: orderData.paymentMethod,
+          items: orderData.items
+        }
+      } 
+    })
     
   } catch (error) {
     console.error('Checkout error:', error)
@@ -866,23 +900,23 @@ transaction.update(couponRef, {
     setIsProcessing(false)
   }
 }, [
-    canCheckout, 
-    items, 
-    finalPrice, 
-    deliveryInfo, 
-    appliedCoupon, 
-    shippingDetails, 
-    paymentMethod, 
-    stockErrors,
-    t,
-    clearCart, 
-    clearDeliveryInfo, 
-    navigate,
-    currencyConfig,
-    currency
-  ])
+  canCheckout, 
+  items, 
+  totalPrice, 
+  deliveryInfo, 
+  appliedCoupon, 
+  shippingDetails, 
+  paymentMethod, 
+  stockErrors,
+  t,
+  clearCart, 
+  clearDeliveryInfo, 
+  navigate,
+  currencyConfig,
+  currency
+])
 
-  const handleQuantityUpdate = useCallback(async (item, newQuantity) => {
+   const handleQuantityUpdate = useCallback(async (item, newQuantity) => {
     if (newQuantity < 1) {
       removeFromCart(item.id)
       return

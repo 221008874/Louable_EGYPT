@@ -71,6 +71,35 @@ export default function Home() {
   const isTablet = windowWidth >= 768 && windowWidth < 1024
   const isSmallMobile = windowWidth < 480
 
+const PRODUCT_CACHE_TTL = 2 * 60 * 1000 // 2 minutes
+
+const getCachedProducts = (currency) => {
+  try {
+    const key = `products_${currency}`
+    const cached = sessionStorage.getItem(key)
+    if (!cached) return null
+    const { data, timestamp } = JSON.parse(cached)
+    if (Date.now() - timestamp > PRODUCT_CACHE_TTL) return null
+    return data
+  } catch (e) {
+    return null
+  }
+}
+
+const setCachedProducts = (currency, data) => {
+  try {
+    const key = `products_${currency}`
+    sessionStorage.setItem(key, JSON.stringify({
+      data,
+      timestamp: Date.now()
+    }))
+  } catch (e) {
+    console.warn('Failed to cache products:', e)
+  }
+}
+
+
+
   useEffect(() => {
     const handleScroll = () => {
       setScrollY(window.scrollY)
@@ -127,33 +156,37 @@ export default function Home() {
   }, [isMobile, products.length])
 
   // SINGLE currency-aware fetch effect - REMOVED the duplicate
-  useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        setLoading(true)
-        // Use currency-specific collection
-        const collectionName = currency === 'USD' ? 'products_dollar' : 'products_egp'
-        console.log(`Fetching from collection: ${collectionName} (currency: ${currency})`)
-        
-        const querySnapshot = await getDocs(collection(db, collectionName))
-        const productList = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }))
-        setProducts(productList)
-        console.log(`Loaded ${productList.length} products from ${collectionName}`)
-      } catch (err) {
-        console.error('Failed to load products:', err)
-      } finally {
-        setLoading(false)
-      }
+ useEffect(() => {
+  const fetchProducts = async () => {
+    if (!currency) return
+    
+    // Check cache first
+    const cached = getCachedProducts(currency)
+    if (cached) {
+      setProducts(cached)
+      setLoading(false)
+      return
     }
     
-    // Only fetch when currency is determined
-    if (currency) {
-      fetchProducts()
+    try {
+      setLoading(true)
+      const collectionName = currency === 'USD' ? 'products_dollar' : 'products_egp'
+      const querySnapshot = await getDocs(collection(db, collectionName))
+      const productList = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }))
+      setProducts(productList)
+      setCachedProducts(currency, productList) // Cache results
+    } catch (err) {
+      console.error('Failed to load products:', err)
+    } finally {
+      setLoading(false)
     }
-  }, [currency]) // Refetch when currency changes
+  }
+  
+  fetchProducts()
+}, [currency])
 
   // Show currency badge in header
   const getCurrencyDisplay = () => {

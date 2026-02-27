@@ -1,133 +1,212 @@
-import { useEffect } from 'react'
+// src/pages/OrderSuccess.jsx
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useTheme } from '../context/ThemeContext'
-import { useCart } from '../context/CartContext'
+import { useLanguage } from '../context/LanguageContext'
 
 export default function OrderSuccess() {
   const location = useLocation()
   const navigate = useNavigate()
   const { theme } = useTheme()
-  const { clearCart } = useCart()
+  const { t } = useLanguage()
   
-  const { orderId, totalPrice, deliveryInfo, shipping, paymentMethod, currency } = location.state || {}
-
-  useEffect(() => {
-    if (paymentMethod === 'cod' && orderId) {
-      clearCart()
-    }
-  }, [paymentMethod, orderId, clearCart])
-
-  if (!orderId) {
+  const { orderId, orderData } = location.state || {}
+  
+  // Fallback if no state (direct navigation)
+  if (!orderData) {
     return (
-      <div style={{ 
-        minHeight: '100vh', 
-        display: 'flex', 
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
         flexDirection: 'column',
-        alignItems: 'center', 
+        alignItems: 'center',
         justifyContent: 'center',
-        textAlign: 'center',
-        padding: '2rem'
+        padding: '20px',
+        textAlign: 'center'
       }}>
-        <div style={{ fontSize: '5rem', marginBottom: '1rem' }}>❌</div>
-        <h1>Invalid Order Access</h1>
-        <p>No order information found.</p>
-        <button onClick={() => navigate('/home')}>Go Home</button>
+        <h1>Order Not Found</h1>
+        <p>Please check your email for order confirmation.</p>
+        <button onClick={() => navigate('/home')}>Continue Shopping</button>
       </div>
     )
   }
 
   const colors = {
     light: {
-      primary: '#3E2723', secondary: '#D4A017', background: '#F8F4F0',
-      card: '#FCFAF8', textDark: '#2E1B1B', textLight: '#6B5E57',
-      success: '#8BC34A', border: '#E8DDD4'
+      background: '#FAFAF8',
+      card: '#FFFFFF',
+      textDark: '#1A1410',
+      textMuted: '#8B7D73',
+      success: '#6B9E5F',
+      secondary: '#D4A574'
     },
     dark: {
-      primary: '#2E1B1B', secondary: '#D4A017', background: '#1A1412',
-      card: '#2E1B1B', textDark: '#F8F4F0', textLight: '#C4B5AD',
-      success: '#8BC34A', border: '#3E2723'
+      background: '#0F0E0C',
+      card: '#1A1410',
+      textDark: '#F5F3F0',
+      textMuted: '#A8968B',
+      success: '#8FC178',
+      secondary: '#D4A574'
     }
   }
 
-  const c = theme === 'light' ? colors.light : colors.dark
+  const c = colors[theme] || colors.light
 
   const formatPrice = (price) => {
-    if (currency === 'USD') return `$${price?.toFixed(2)}`
-    return `${price?.toFixed(2)} EGP`
+    if (orderData.currency === 'USD') {
+      return `$${Number(price).toFixed(2)}`
+    }
+    return `${Number(price).toFixed(2)} ${orderData.currency || 'EGP'}`
+  }
+
+  // Ensure price is a number
+  const safePrice = (price) => {
+    const num = Number(price)
+    return isNaN(num) ? 0 : num
   }
 
   return (
     <div style={{
-      minHeight: '100vh', background: c.background, display: 'flex',
-      flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      padding: '2rem', textAlign: 'center'
+      minHeight: '100vh',
+      background: c.background,
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '20px'
     }}>
-      <div style={{ fontSize: '5rem', marginBottom: '1.5rem', animation: 'bounce 2s infinite' }}>
-        🎉
-      </div>
-      
-      <h1 style={{ fontSize: '2.5rem', color: c.success, marginBottom: '1rem', fontWeight: '700' }}>
-        Order Confirmed!
-      </h1>
-      
-      <p style={{ fontSize: '1.2rem', color: c.textLight, marginBottom: '2rem' }}>
-        Your order has been placed successfully. 
-        {paymentMethod === 'cod' && ' Pay cash when you receive it.'}
-      </p>
-      
       <div style={{
-        background: c.card, borderRadius: '16px', padding: '2rem',
-        maxWidth: '500px', width: '100%', border: `2px solid ${c.border}`, marginBottom: '2rem'
+        background: c.card,
+        borderRadius: '24px',
+        padding: '40px',
+        maxWidth: '600px',
+        width: '100%',
+        textAlign: 'center',
+        boxShadow: '0 25px 80px rgba(0,0,0,0.15)'
       }}>
-        <div style={{ marginBottom: '1rem' }}>
-          <span style={{ color: c.textLight }}>Order ID: </span>
-          <strong style={{ color: c.textDark, fontFamily: 'monospace' }}>{orderId}</strong>
-        </div>
-        
-        <div style={{ marginBottom: '1rem' }}>
-          <span style={{ color: c.textLight }}>Payment Method: </span>
-          <strong style={{ color: c.textDark }}>
-            {paymentMethod === 'cod' ? 'Cash on Delivery 💵' : 'Card Payment 💳'}
-          </strong>
-        </div>
-        
-        {shipping && (
-          <div style={{ marginBottom: '1rem' }}>
-            <span style={{ color: c.textLight }}>Shipping: </span>
-            <strong style={{ color: c.textDark }}>{shipping.zone}</strong>
-          </div>
-        )}
-        
         <div style={{
-          padding: '1rem', background: c.background, borderRadius: '8px', marginTop: '1rem'
+          width: '100px',
+          height: '100px',
+          background: `linear-gradient(135deg, ${c.success}, ${c.success}dd)`,
+          borderRadius: '50%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          margin: '0 auto 24px',
+          fontSize: '3rem'
         }}>
-          <span style={{ color: c.textLight }}>Total: </span>
-          <strong style={{ color: c.secondary, fontSize: '1.5rem' }}>
-            {formatPrice(totalPrice)}
-          </strong>
+          ✓
+        </div>
+
+        <h1 style={{ color: c.textDark, marginBottom: '8px' }}>
+          Order Confirmed!
+        </h1>
+        <p style={{ color: c.textMuted, marginBottom: '24px' }}>
+          Your order has been placed successfully.
+        </p>
+
+        <div style={{
+          background: `linear-gradient(135deg, ${c.secondary}15, ${c.secondary}05)`,
+          borderRadius: '16px',
+          padding: '24px',
+          marginBottom: '24px',
+          textAlign: 'left'
+        }}>
+          <div style={{ marginBottom: '12px' }}>
+            <span style={{ color: c.textMuted }}>Order ID: </span>
+            <span style={{ color: c.textDark, fontWeight: '700' }}>{orderId}</span>
+          </div>
+          
+          <div style={{ marginBottom: '12px' }}>
+            <span style={{ color: c.textMuted }}>Payment Method: </span>
+            <span style={{ color: c.textDark, fontWeight: '700' }}>
+              {orderData.paymentMethod} {orderData.paymentMethod.includes('Card') ? '💳' : '💵'}
+            </span>
+          </div>
+
+          {/* Price Breakdown */}
+          <div style={{ 
+            borderTop: `1px dashed ${c.textMuted}40`,
+            marginTop: '16px',
+            paddingTop: '16px'
+          }}>
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between',
+              marginBottom: '8px'
+            }}>
+              <span style={{ color: c.textMuted }}>Subtotal:</span>
+              <span style={{ color: c.textDark }}>{formatPrice(safePrice(orderData.subtotal))}</span>
+            </div>
+            
+            {safePrice(orderData.discount) > 0 && (
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between',
+                marginBottom: '8px'
+              }}>
+                <span style={{ color: c.textMuted }}>Discount:</span>
+                <span style={{ color: c.success }}>-{formatPrice(safePrice(orderData.discount))}</span>
+              </div>
+            )}
+            
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between',
+              marginBottom: '8px'
+            }}>
+              <span style={{ color: c.textMuted }}>Shipping:</span>
+              <span style={{ color: c.textDark }}>
+                {safePrice(orderData.shippingCost) === 0 ? 'FREE' : formatPrice(safePrice(orderData.shippingCost))}
+              </span>
+            </div>
+            
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between',
+              marginTop: '12px',
+              paddingTop: '12px',
+              borderTop: `2px solid ${c.secondary}`
+            }}>
+              <span style={{ color: c.textDark, fontWeight: '700', fontSize: '1.1rem' }}>Total:</span>
+              <span style={{ color: c.secondary, fontWeight: '800', fontSize: '1.3rem' }}>
+                {formatPrice(safePrice(orderData.totalPrice))}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+          <button
+            onClick={() => navigate('/home')}
+            style={{
+              padding: '14px 32px',
+              background: c.secondary,
+              color: 'white',
+              border: 'none',
+              borderRadius: '12px',
+              fontWeight: '700',
+              cursor: 'pointer'
+            }}
+          >
+            Continue Shopping
+          </button>
+          
+          <button
+            onClick={() => window.print()}
+            style={{
+              padding: '14px 32px',
+              background: c.card,
+              color: c.textDark,
+              border: `2px solid ${c.textMuted}`,
+              borderRadius: '12px',
+              fontWeight: '700',
+              cursor: 'pointer'
+            }}
+          >
+            Print Receipt
+          </button>
         </div>
       </div>
-      
-      <button
-        onClick={() => navigate('/home')}
-        style={{
-          padding: '14px 32px', background: `linear-gradient(135deg, ${c.secondary} 0%, #B8860B 100%)`,
-          color: 'white', border: 'none', borderRadius: '10px', fontWeight: '700',
-          fontSize: '1.1rem', cursor: 'pointer', transition: 'transform 0.3s ease',
-          boxShadow: '0 4px 12px rgba(212, 160, 23, 0.3)'
-        }}
-        onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-        onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-      >
-        🛍️ Continue Shopping
-      </button>
-      
-      <style>{`
-        @keyframes bounce {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-20px); }
-        }
-      `}</style>
     </div>
   )
 }
