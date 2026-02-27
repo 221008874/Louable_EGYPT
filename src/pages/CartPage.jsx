@@ -19,7 +19,7 @@ import {
   increment,
   limit,
   writeBatch,
-  
+  Timestamp,
   runTransaction  // ADDED for atomic operations
 } from 'firebase/firestore'
 import L from 'leaflet'
@@ -846,8 +846,8 @@ useEffect(() => {
 const now = new Date()
 
 transaction.update(couponRef, {
-  usedCount: newUsedCount,  // Explicit number: 1
-  lastUsedAt: now,          // Explicit Date object
+  usedCount: newUsedCount,
+  lastUsedAt: Timestamp.now(),
   lastUsedBy: deliveryInfo.email || 'guest'
 })
       }
