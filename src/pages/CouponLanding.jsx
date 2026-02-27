@@ -450,7 +450,7 @@ export default function CouponLanding() {
                   color: c.textDark,
                   border: `2px solid ${c.border}`,
                   borderRadius: '14px',
-                  fontWeight:700,
+                  fontWeight: 700,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',

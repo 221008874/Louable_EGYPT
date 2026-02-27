@@ -176,11 +176,12 @@ export default function CartPage() {
   const isSmallMobile = windowWidth < 480
 
   // ============ FIXED: Sync coupon with context ============
-  useEffect(() => {
-    if (contextAppliedCoupon) {
-      setAppliedCoupon(contextAppliedCoupon)
-    }
-  }, [contextAppliedCoupon])
+useEffect(() => {
+  if (contextAppliedCoupon) {
+    setAppliedCoupon(contextAppliedCoupon)
+    setCouponInput(contextAppliedCoupon.code) // ADD THIS LINE
+  }
+}, [contextAppliedCoupon])
 
   // ============ FIXED: Handle scanned coupon from QR ============
   useEffect(() => {
@@ -665,80 +666,54 @@ export default function CartPage() {
   const [couponError, setCouponError] = useState(null)
 
   const handleApplyCoupon = useCallback(async () => {
-    const code = couponInput.toUpperCase().trim()
-    if (!code) return
+  const code = couponInput.toUpperCase().trim()
+  if (!code) return
+  
+  if (appliedCoupon && appliedCoupon.code === code) {
+    return
+  }
+  
+  setCouponLoading(true)
+  setCouponError(null)
+  
+  try {
+    const couponsRef = collection(db, 'egp_coupons')
+    const q = query(
+      couponsRef, 
+      where('code', '==', code), 
+      where('isActive', '==', true)
+    )
+    const snapshot = await getDocs(q)
     
-    if (appliedCoupon && appliedCoupon.code === code) {
+    if (snapshot.empty) {
+      setCouponError(t('invalidCoupon') || 'Invalid or expired coupon')
+      setCouponInput('') // Clear invalid input
+      setCouponLoading(false)
       return
     }
     
-    setCouponLoading(true)
-    setCouponError(null)
+    // ... rest of validation ...
     
-    try {
-      const couponsRef = collection(db, 'egp_coupons')
-      const q = query(
-        couponsRef, 
-        where('code', '==', code), 
-        where('isActive', '==', true)
-      )
-      const snapshot = await getDocs(q)
-      
-      if (snapshot.empty) {
-        setCouponError(t('invalidCoupon') || 'Invalid or expired coupon')
-        setCouponLoading(false)
-        return
-      }
-      
-      const couponDoc = snapshot.docs[0]
-      const couponData = couponDoc.data()
-      
-      const now = new Date()
-      const expiresAt = couponData.expiresAt?.toDate?.() || new Date(couponData.expiresAt)
-      
-      if (expiresAt < now) {
-        setCouponError('This coupon has expired')
-        setCouponLoading(false)
-        return
-      }
-      
-      if (couponData.usedCount >= couponData.maxUses) {
-        setCouponError('This coupon has reached its usage limit')
-        setCouponLoading(false)
-        return
-      }
-      
-      const sessionUsed = sessionStorage.getItem(`coupon_${code}_used`)
-      if (sessionUsed) {
-        setCouponError('This coupon was already used in this session')
-        setCouponLoading(false)
-        return
-      }
-      
-      if (couponData.currency && couponData.currency !== 'EGP') {
-        setCouponError('This coupon is not valid for EGP currency')
-        setCouponLoading(false)
-        return
-      }
-      
-      const couponToApply = {
-        id: couponDoc.id,
-        code: couponData.code,
-        amount: couponData.amount,
-        currency: couponData.currency || 'EGP',
-        label: `${currencyConfig.symbol} ${couponData.amount} off`
-      }
-      
-      setAppliedCoupon(couponToApply)
-      contextSetAppliedCoupon(couponToApply)  // Sync with context
-      
-    } catch (error) {
-      console.error('Coupon validation error:', error)
-      setCouponError('Failed to validate coupon. Please try again.')
-    } finally {
-      setCouponLoading(false)
+    const couponToApply = {
+      id: couponDoc.id,
+      code: couponData.code,
+      amount: couponData.amount,
+      currency: couponData.currency || 'EGP',
+      label: `${currencyConfig.symbol} ${couponData.amount} off`
     }
-  }, [couponInput, currencyConfig.symbol, t, appliedCoupon, contextSetAppliedCoupon])  // FIXED: Added contextSetAppliedCoupon
+    
+    setAppliedCoupon(couponToApply)
+    contextSetAppliedCoupon(couponToApply)
+    // Keep the input showing the applied code: setCouponInput(couponData.code)
+    
+  } catch (error) {
+    console.error('Coupon validation error:', error)
+    setCouponError('Failed to validate coupon. Please try again.')
+    setCouponInput('') // Clear on error
+  } finally {
+    setCouponLoading(false)
+  }
+}, [couponInput, currencyConfig.symbol, t, appliedCoupon, contextSetAppliedCoupon]) // FIXED: Added contextSetAppliedCoupon
 
   const discountAmount = appliedCoupon ? appliedCoupon.amount : 0
   const subtotal = Math.max(0, totalPrice - discountAmount)
