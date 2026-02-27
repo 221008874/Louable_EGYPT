@@ -815,13 +815,28 @@ useEffect(() => {
         })
 
         // Increment coupon usage
-        if (appliedCoupon) {
-          const couponRef = doc(db, 'egp_coupons', appliedCoupon.id)
-          transaction.update(couponRef, {
-            usedCount: increment(1),
-            lastUsedAt: serverTimestamp(),
-            lastUsedBy: deliveryInfo.email || 'guest'
-          })
+        // In handleCheckout, inside runTransaction:
+if (appliedCoupon) {
+  const couponRef = doc(db, 'egp_coupons', appliedCoupon.id)
+  
+  // EXPLICITLY READ FIRST (required for rules to work)
+  const couponSnap = await transaction.get(couponRef)
+  if (!couponSnap.exists()) {
+    throw new Error('Coupon no longer exists')
+  }
+  
+  const currentData = couponSnap.data()
+  if (currentData.usedCount >= currentData.maxUses) {
+    throw new Error('Coupon has been fully used')
+  }
+  
+  // Now update
+  transaction.update(couponRef, {
+    usedCount: increment(1),
+    lastUsedAt: serverTimestamp(),
+    lastUsedBy: deliveryInfo.email || 'guest'
+  })
+
         }
       })
 
